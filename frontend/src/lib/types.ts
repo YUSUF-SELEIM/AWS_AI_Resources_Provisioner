@@ -1,0 +1,107 @@
+// Shared API response types for Stackmind
+
+export interface TemplateResponse {
+  template: string;
+}
+
+export interface DeployResponse {
+  stack_name: string;
+  stack_id: string;
+}
+
+export interface StackOutput {
+  key: string;
+  value: string;
+}
+
+export interface FailedEvent {
+  logical_id: string;
+  resource_type: string;
+  status: string;
+  reason: string;
+}
+
+export interface StackStatusResponse {
+  stack_name: string;
+  status: string;
+  reason?: string;
+  outputs?: StackOutput[];
+  failed_events?: FailedEvent[];
+}
+
+export interface StackResource {
+  logical_id: string;
+  resource_type: string;
+  physical_id?: string;
+  status: string;
+}
+
+export type StackStatus =
+  | "idle"
+  | "CREATE_IN_PROGRESS"
+  | "CREATE_COMPLETE"
+  | "CREATE_FAILED"
+  | "ROLLBACK_IN_PROGRESS"
+  | "ROLLBACK_COMPLETE";
+
+// --- Phase 3A: Change set types ---
+
+export interface ChangeSetChange {
+  action: "Add" | "Modify" | "Remove";
+  resource_type: string;
+  logical_id: string;
+  replacement: boolean;
+}
+
+export interface ChangeSetResponse {
+  changeset_name: string;
+  changes: ChangeSetChange[];
+}
+
+// --- Phase 3A: Diagram types ---
+
+export interface DiagramNode {
+  id: string;
+  type: string;
+  label: string;
+}
+
+export interface DiagramEdge {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface DiagramResponse {
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
+}
+
+// --- Phase 3B: Resource interaction types ---
+
+export type DynamoItem = Record<string, string | number | boolean | null | unknown>;
+
+export interface DynamoScanResponse {
+  items: DynamoItem[];
+  count: number;
+}
+
+export interface SqsMessage {
+  message_id: string;
+  body: string;
+  sent_timestamp?: string;
+  receipt_handle: string;
+}
+
+export interface SqsMessagesResponse {
+  messages: SqsMessage[];
+  count: number;
+}
+
+export interface LambdaInvokeResponse {
+  status_code: number;
+  response: unknown;
+  logs: string;
+  function_error?: string;
+}
+
