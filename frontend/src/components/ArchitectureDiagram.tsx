@@ -20,19 +20,19 @@ import { isInteractive } from "./ResourcePanel";
 // ---------------------------------------------------------------------------
 
 const RESOURCE_COLORS: Record<string, { bg: string; border: string; icon: string }> = {
-  "AWS::Lambda::Function":        { bg: "#1d3a5f", border: "#3b82f6", icon: "λ" },
-  "AWS::Lambda::EventSourceMapping": { bg: "#1d3a5f", border: "#60a5fa", icon: "↔" },
-  "AWS::S3::Bucket":              { bg: "#14422a", border: "#22c55e", icon: "🪣" },
-  "AWS::DynamoDB::Table":         { bg: "#14422a", border: "#4ade80", icon: "🗄" },
-  "AWS::SQS::Queue":              { bg: "#422d14", border: "#f59e0b", icon: "📨" },
-  "AWS::SNS::Topic":              { bg: "#422d14", border: "#fbbf24", icon: "📢" },
-  "AWS::IAM::Role":               { bg: "#2a2a35", border: "#94a3b8", icon: "🔑" },
-  "AWS::IAM::Policy":             { bg: "#2a2a35", border: "#94a3b8", icon: "📄" },
+  "AWS::Lambda::Function":        { bg: "#dbeafe", border: "#3b82f6", icon: "λ" },
+  "AWS::Lambda::EventSourceMapping": { bg: "#dbeafe", border: "#60a5fa", icon: "↔" },
+  "AWS::S3::Bucket":              { bg: "#dcfce7", border: "#22c55e", icon: "S3" },
+  "AWS::DynamoDB::Table":         { bg: "#dcfce7", border: "#4ade80", icon: "DB" },
+  "AWS::SQS::Queue":              { bg: "#fef3c7", border: "#f59e0b", icon: "Q" },
+  "AWS::SNS::Topic":              { bg: "#fef3c7", border: "#fbbf24", icon: "SNS" },
+  "AWS::IAM::Role":               { bg: "#f1f3f5", border: "#94a3b8", icon: "R" },
+  "AWS::IAM::Policy":             { bg: "#f1f3f5", border: "#94a3b8", icon: "P" },
 };
 
 function getColor(resourceType: string) {
   return (
-    RESOURCE_COLORS[resourceType] ?? { bg: "#1a1e2d", border: "#6366f1", icon: "☁" }
+    RESOURCE_COLORS[resourceType] ?? { bg: "#f1f3f5", border: "#2563eb", icon: "?" }
   );
 }
 
@@ -71,15 +71,15 @@ function ResourceNode({ data }: { data: { label: string; resourceType: string } 
             right: 6,
             fontSize: 9,
             fontWeight: 700,
-            color: "#818cf8",
-            background: "rgba(99,102,241,0.15)",
-            border: "1px solid rgba(99,102,241,0.3)",
+            color: "#3b82f6",
+            background: "rgba(37,99,235,0.1)",
+            border: "1px solid rgba(37,99,235,0.3)",
             borderRadius: 4,
             padding: "1px 4px",
             lineHeight: 1.5,
           }}
         >
-          ⚡
+          i
         </span>
       )}
       <div style={{ fontSize: 22, lineHeight: 1.2 }}>{color.icon}</div>
@@ -87,7 +87,7 @@ function ResourceNode({ data }: { data: { label: string; resourceType: string } 
         style={{
           fontSize: 12,
           fontWeight: 700,
-          color: "#f1f5f9",
+          color: "#0f172a",
           marginTop: 4,
           wordBreak: "break-word",
         }}
@@ -175,10 +175,10 @@ export function ArchitectureDiagram({ nodes: rawNodes, edges: rawEdges, onNodeCl
         target: e.target,
         label: e.label,
         animated: true,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-        style: { stroke: "#6366f1", strokeWidth: 1.5 },
-        labelStyle: { fill: "#94a3b8", fontSize: 10 },
-        labelBgStyle: { fill: "#141720" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#2563eb" },
+        style: { stroke: "#2563eb", strokeWidth: 1.5 },
+        labelStyle: { fill: "#475569", fontSize: 10 },
+        labelBgStyle: { fill: "#ffffff" },
       })),
     [rawEdges]
   );
@@ -236,11 +236,11 @@ export function ArchitectureDiagram({ nodes: rawNodes, edges: rawEdges, onNodeCl
           fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
         >
-          <Background color="#252a3a" gap={20} size={1} />
+          <Background color="#e2e8f0" gap={20} size={1} />
           <Controls
             style={{
-              background: "#141720",
-              border: "1px solid #252a3a",
+              background: "#ffffff",
+              border: "1px solid #e2e8f0",
               borderRadius: 8,
             }}
           />

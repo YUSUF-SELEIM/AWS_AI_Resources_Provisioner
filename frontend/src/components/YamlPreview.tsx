@@ -3,6 +3,7 @@ import { useChangeset } from "../hooks/useChangeset";
 
 interface Props {
   yaml: string;
+  onChange: (newYaml: string) => void;
   onPreviewChanges: (stackName: string, changesetName: string, changes: import("../lib/types").ChangeSetChange[]) => void;
 }
 
@@ -23,7 +24,7 @@ function deriveStackName(yaml: string): string {
   return `stack-${Date.now()}`;
 }
 
-export function YamlPreview({ yaml, onPreviewChanges }: Props) {
+export function YamlPreview({ yaml, onChange, onPreviewChanges }: Props) {
   const { mutate, isPending, error } = useChangeset();
   const [stackName] = useState(() => deriveStackName(yaml));
 
@@ -43,9 +44,12 @@ export function YamlPreview({ yaml, onPreviewChanges }: Props) {
         <h2 className="yaml-title">Generated CloudFormation Template</h2>
         <span className="badge badge-blue">YAML</span>
       </div>
-      <pre className="yaml-pre">
-        <code>{yaml}</code>
-      </pre>
+      <textarea
+        className="yaml-pre"
+        style={{ width: "100%", height: "380px", resize: "vertical", outline: "none", border: "1px solid var(--border)" }}
+        value={yaml}
+        onChange={(e) => onChange(e.target.value)}
+      />
       <div className="yaml-footer">
         <span className="stack-name-label">Stack: <code>{stackName}</code></span>
         <button

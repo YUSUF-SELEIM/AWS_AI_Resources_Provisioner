@@ -2,14 +2,14 @@ import { useState } from "react";
 import { useGenerateTemplate } from "../hooks/useGenerateTemplate";
 
 interface Props {
-  onTemplate: (yaml: string) => void;
+  onTemplate: (yaml: string, promptText?: string) => void;
 }
 
 const EXAMPLE_PROMPTS = [
-  "Create a DynamoDB table for storing user profiles",
-  "Create an SQS queue for order processing",
-  "Create a Lambda function triggered by an SQS queue, with the necessary IAM role",
-  "Create an S3 bucket called my-photos",
+  "Create an S3 bucket and an S3 object inside it containing dummy config JSON data",
+  "Create an EC2 Web Server inside a Security Group with an attached Elastic IP and UserData",
+  "Create a Lambda function triggered by an SQS queue with an execution IAM Role",
+  "Create a DynamoDB table and a Lambda function that receives environment variables to query it",
 ];
 
 export function PromptInput({ onTemplate }: Props) {
@@ -18,13 +18,17 @@ export function PromptInput({ onTemplate }: Props) {
 
   const handleGenerate = (text = prompt) => {
     if (!text.trim()) return;
-    mutate(text, { onSuccess: (data) => onTemplate(data.template) });
+    mutate(text, { onSuccess: (data) => onTemplate(data.template, text) });
   };
 
   const handleChip = (chip: string) => {
     setPrompt(chip);
     handleGenerate(chip);
   };
+
+  const history: { timestamp: number; prompt: string; template: string }[] = JSON.parse(
+    localStorage.getItem("stackmind_history") || "[]"
+  );
 
   return (
     <div className="prompt-input-card">
@@ -42,6 +46,28 @@ export function PromptInput({ onTemplate }: Props) {
           </button>
         ))}
       </div>
+
+      {history.length > 0 && (
+        <div style={{ marginTop: "1rem", borderTop: "1px dashed var(--border)", paddingTop: "0.75rem" }}>
+          <label className="prompt-label" style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "0.5rem" }}>
+            Recent Templates (Load without API call)
+          </label>
+          <div className="prompt-chips">
+            {history.map((h, idx) => (
+              <button
+                key={idx}
+                className="chip"
+                style={{ borderColor: "var(--border)", opacity: 0.85, fontSize: "12px" }}
+                onClick={() => onTemplate(h.template, h.prompt)}
+                disabled={isPending}
+                type="button"
+              >
+                {h.prompt.slice(0, 50)}{h.prompt.length > 50 ? "..." : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <label htmlFor="prompt" className="prompt-label">
         Or describe your own infrastructure

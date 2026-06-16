@@ -9,6 +9,11 @@ import type {
   StackStatusResponse,
   SqsMessagesResponse,
   TemplateResponse,
+  S3ListResponse,
+  Ec2InfoResponse,
+  Ec2ConsoleResponse,
+  RdsInfoResponse,
+  RdsQueryResponse,
 } from "./types";
 
 const api = axios.create({
@@ -141,3 +146,121 @@ export async function invokeLambda(
   );
   return data;
 }
+
+export async function getLambdaLogs(
+  stackName: string,
+  logicalId: string
+): Promise<{ logs: string }> {
+  const { data } = await api.get<{ logs: string }>(
+    `/resources/${stackName}/${logicalId}/lambda/logs`
+  );
+  return data;
+}
+
+export async function listS3Objects(
+  stackName: string,
+  logicalId: string
+): Promise<S3ListResponse> {
+  const { data } = await api.get<S3ListResponse>(
+    `/resources/${stackName}/${logicalId}/s3/objects`
+  );
+  return data;
+}
+
+export async function deleteS3Object(
+  stackName: string,
+  logicalId: string,
+  key: string
+): Promise<{ ok: boolean }> {
+  const { data } = await api.delete<{ ok: boolean }>(
+    `/resources/${stackName}/${logicalId}/s3/objects`,
+    { data: { key } }
+  );
+  return data;
+}
+
+export async function uploadS3Object(
+  stackName: string,
+  logicalId: string,
+  key: string,
+  content: string
+): Promise<{ ok: boolean }> {
+  const { data } = await api.post<{ ok: boolean }>(
+    `/resources/${stackName}/${logicalId}/s3/objects`,
+    { key, content }
+  );
+  return data;
+}
+
+// --- Phase 3B: EC2 ---
+
+export async function getEc2Info(
+  stackName: string,
+  logicalId: string
+): Promise<Ec2InfoResponse> {
+  const { data } = await api.get<Ec2InfoResponse>(
+    `/resources/${stackName}/${logicalId}/ec2/info`
+  );
+  return data;
+}
+
+export async function setEc2State(
+  stackName: string,
+  logicalId: string,
+  action: "start" | "stop" | "reboot"
+): Promise<{ ok: boolean }> {
+  const { data } = await api.post<{ ok: boolean }>(
+    `/resources/${stackName}/${logicalId}/ec2/state`,
+    { action }
+  );
+  return data;
+}
+
+export async function getEc2Console(
+  stackName: string,
+  logicalId: string
+): Promise<Ec2ConsoleResponse> {
+  const { data } = await api.get<Ec2ConsoleResponse>(
+    `/resources/${stackName}/${logicalId}/ec2/console`
+  );
+  return data;
+}
+
+// --- Phase 3B: RDS ---
+
+export async function getRdsInfo(
+  stackName: string,
+  logicalId: string
+): Promise<RdsInfoResponse> {
+  const { data } = await api.get<RdsInfoResponse>(
+    `/resources/${stackName}/${logicalId}/rds/info`
+  );
+  return data;
+}
+
+export async function setRdsAction(
+  stackName: string,
+  logicalId: string,
+  action: "reboot"
+): Promise<{ ok: boolean }> {
+  const { data } = await api.post<{ ok: boolean }>(
+    `/resources/${stackName}/${logicalId}/rds/action`,
+    { action }
+  );
+  return data;
+}
+
+export async function runRdsQuery(
+  stackName: string,
+  logicalId: string,
+  sql: string
+): Promise<RdsQueryResponse> {
+  const { data } = await api.post<RdsQueryResponse>(
+    `/resources/${stackName}/${logicalId}/rds/query`,
+    { sql }
+  );
+  return data;
+}
+
+
+

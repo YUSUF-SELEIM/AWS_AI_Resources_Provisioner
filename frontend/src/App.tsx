@@ -55,17 +55,36 @@ function DiagramPanel({
 // App
 // ---------------------------------------------------------------------------
 export default function App() {
-  const [stage, setStage] = useState<Stage>("idle");
-  const [template, setTemplate] = useState<string | null>(null);
+  const [template, setTemplate] = useState<string | null>(() => localStorage.getItem("stackmind_template"));
+  const [stage, setStage] = useState<Stage>(() => (localStorage.getItem("stackmind_stage") as Stage) || "idle");
+  const [deployedStack, setDeployedStack] = useState<string | null>(() => localStorage.getItem("stackmind_deployed_stack"));
   const [changesetState, setChangesetState] = useState<ChangesetState | null>(null);
-  const [deployedStack, setDeployedStack] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<DiagramNode | null>(null);
 
   const { mutate: execChangeset, isPending: isDeploying, error: deployError } =
     useExecuteChangeset();
 
-  // Step 1 → 2: new template generated
-  const handleNewTemplate = (yaml: string) => {
+  // Step 1 → 2: new template generated / loaded from history
+  const handleNewTemplate = (yaml: string, promptText?: string) => {
+    localStorage.setItem("stackmind_template", yaml);
+    localStorage.setItem("stackmind_stage", "generated");
+    localStorage.removeItem("stackmind_deployed_stack");
+
+    // Save template to history
+    const history = JSON.parse(localStorage.getItem("stackmind_history") || "[]");
+    const exists = history.some((h: any) => h.template === yaml);
+    if (!exists) {
+      const newHistory = [
+        {
+          timestamp: Date.now(),
+          prompt: promptText || "Custom Configuration",
+          template: yaml,
+        },
+        ...history,
+      ].slice(0, 10);
+      localStorage.setItem("stackmind_history", JSON.stringify(newHistory));
+    }
+
     setTemplate(yaml);
     setChangesetState(null);
     setDeployedStack(null);
@@ -92,11 +111,25 @@ export default function App() {
       },
       {
         onSuccess: () => {
+          localStorage.setItem("stackmind_deployed_stack", changesetState.stackName);
+          localStorage.setItem("stackmind_stage", "deployed");
           setDeployedStack(changesetState.stackName);
           setStage("deployed");
         },
       }
     );
+  };
+
+  // Reset all active states
+  const handleReset = () => {
+    localStorage.removeItem("stackmind_template");
+    localStorage.removeItem("stackmind_stage");
+    localStorage.removeItem("stackmind_deployed_stack");
+    setTemplate(null);
+    setStage("idle");
+    setChangesetState(null);
+    setDeployedStack(null);
+    setSelectedNode(null);
   };
 
   // Node click from diagram (only opens panel if stack is deployed)
@@ -113,14 +146,24 @@ export default function App() {
     <div className="app-root">
       {/* Header */}
       <header className="app-header">
-        <div className="header-inner">
-          <div className="logo">
-            <span className="logo-icon">⚡</span>
-            <span className="logo-text">Stackmind</span>
+        <div className="header-inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+          <div>
+            <div className="logo">
+              <span className="logo-text">Stackmind</span>
+            </div>
+            <p className="header-tagline" style={{ margin: 0 }}>
+              Natural language → CloudFormation → Local AWS sandbox
+            </p>
           </div>
-          <p className="header-tagline">
-            Natural language → CloudFormation → Local AWS sandbox
-          </p>
+          {template && (
+            <button 
+              className="btn btn-ghost btn-sm" 
+              onClick={handleReset}
+              style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+            >
+              Start Fresh
+            </button>
+          )}
         </div>
       </header>
 
@@ -145,6 +188,10 @@ export default function App() {
                 <div className="preview-grid">
                   <YamlPreview
                     yaml={template}
+                    onChange={(newYaml) => {
+                      setTemplate(newYaml);
+                      localStorage.setItem("stackmind_template", newYaml);
+                    }}
                     onPreviewChanges={handlePreviewChanges}
                   />
                   <DiagramPanel
@@ -192,7 +239,7 @@ export default function App() {
           {deployedStack && (
             <span style={{ marginLeft: "0.75rem" }}>
               · Stack: <code>{deployedStack}</code>
-              {" — "}<span style={{ color: "var(--success)" }}>click any ⚡ node to inspect</span>
+              {" — "}<span style={{ color: "var(--accent)" }}>click any interactive node to inspect</span>
             </span>
           )}
         </p>

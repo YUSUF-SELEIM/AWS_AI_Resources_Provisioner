@@ -73,7 +73,7 @@ export function ChangeSetPreview({
                   </td>
                   <td>
                     {c.replacement && (
-                      <span className="badge badge-orange">⚠ Replace</span>
+                      <span className="badge badge-orange">Replace</span>
                     )}
                   </td>
                 </tr>
@@ -83,7 +83,7 @@ export function ChangeSetPreview({
         </div>
       ) : (
         <div className="alert alert-info changeset-empty">
-          <span>ℹ No resource changes detected. The stack will be created/updated as-is.</span>
+          <span>No resource changes detected. The stack will be created/updated as-is.</span>
         </div>
       )}
 
@@ -99,7 +99,7 @@ export function ChangeSetPreview({
               <span className="spinner" /> Deploying…
             </span>
           ) : (
-            "✓ Approve & Deploy"
+            "Approve & Deploy"
           )}
         </button>
       </div>

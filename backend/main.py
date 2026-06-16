@@ -245,6 +245,249 @@ def fetch_failed_events(cfn, stack_name: str) -> list[dict]:
         return []
 
 # ---------------------------------------------------------------------------
+# EC2 Custom Resource Workaround
+# ---------------------------------------------------------------------------
+
+LAMBDA_CODE = """
+import boto3
+import json
+import urllib.request
+import os
+
+def handler(event, context):
+    print("Event:", event)
+    request_type = event['RequestType']
+    props = event['ResourceProperties']
+    res_type = event['ResourceType']
+    ec2 = boto3.client('ec2', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+    physical_id = event.get('PhysicalResourceId', 'unknown')
+    response_data = {}
+    status = 'SUCCESS'
+
+    try:
+        if res_type == 'Custom::MiniStackInstance':
+            if request_type == 'Create':
+                ALLOWED_RUN_KEYS = {
+                    'BlockDeviceMappings', 'ImageId', 'InstanceType', 'Ipv6AddressCount', 'Ipv6Addresses',
+                    'KernelId', 'KeyName', 'MaxCount', 'MinCount', 'Monitoring', 'Placement', 'RamdiskId',
+                    'SecurityGroupIds', 'SecurityGroups', 'SubnetId', 'UserData', 'ElasticGpuSpecification',
+                    'ElasticInferenceAccelerators', 'TagSpecifications', 'LaunchTemplate', 'InstanceMarketOptions',
+                    'CreditSpecification', 'CpuOptions', 'CapacityReservationSpecification', 'HibernationOptions',
+                    'LicenseSpecifications', 'MetadataOptions', 'EnclaveOptions', 'PrivateDnsNameOptions',
+                    'MaintenanceOptions', 'DisableApiStop', 'EnablePrimaryIpv6', 'NetworkPerformanceOptions',
+                    'Operator', 'SecondaryInterfaces', 'DryRun', 'DisableApiTermination',
+                    'InstanceInitiatedShutdownBehavior', 'PrivateIpAddress', 'ClientToken', 'AdditionalInfo',
+                    'NetworkInterfaces', 'IamInstanceProfile', 'EbsOptimized'
+                }
+                run_kwargs = {k: v for k, v in props.items() if k in ALLOWED_RUN_KEYS}
+                if 'MinCount' not in run_kwargs: run_kwargs['MinCount'] = 1
+                if 'MaxCount' not in run_kwargs: run_kwargs['MaxCount'] = 1
+                
+                # Handle Tags
+                if 'Tags' in props:
+                    run_kwargs['TagSpecifications'] = [{
+                        'ResourceType': 'instance',
+                        'Tags': props['Tags']
+                    }]
+                    
+                resp = ec2.run_instances(**run_kwargs)
+                instance = resp['Instances'][0]
+                physical_id = instance['InstanceId']
+                response_data['PublicIp'] = instance.get('PublicIpAddress', '')
+                response_data['PrivateIp'] = instance.get('PrivateIpAddress', '')
+
+            elif request_type == 'Delete':
+                if physical_id != 'unknown':
+                    ec2.terminate_instances(InstanceIds=[physical_id])
+                    
+            elif request_type == 'Update':
+                pass
+                
+        elif res_type == 'Custom::MiniStackEIP':
+            if request_type == 'Create':
+                resp = ec2.allocate_address(Domain='vpc')
+                physical_id = resp['AllocationId']
+                response_data['PublicIp'] = resp.get('PublicIp', '')
+                response_data['AllocationId'] = resp.get('AllocationId', '')
+            elif request_type == 'Delete':
+                if physical_id != 'unknown':
+                    ec2.release_address(AllocationId=physical_id)
+            elif request_type == 'Update':
+                pass
+                
+        elif res_type == 'Custom::MiniStackEIPAssociation':
+            if request_type == 'Create':
+                assoc_kwargs = {}
+                if 'AllocationId' in props:
+                    assoc_kwargs['AllocationId'] = props['AllocationId']
+                if 'InstanceId' in props:
+                    assoc_kwargs['InstanceId'] = props['InstanceId']
+                if 'PublicIp' in props:
+                    assoc_kwargs['PublicIp'] = props['PublicIp']
+                resp = ec2.associate_address(**assoc_kwargs)
+                physical_id = resp['AssociationId']
+                response_data['AssociationId'] = resp['AssociationId']
+            elif request_type == 'Delete':
+                if physical_id != 'unknown':
+                    ec2.disassociate_address(AssociationId=physical_id)
+            elif request_type == 'Update':
+                pass
+
+        elif res_type == 'Custom::MiniStackS3Object':
+            s3 = boto3.client('s3', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+            if request_type in ('Create', 'Update'):
+                bucket = props.get('Bucket')
+                key = props.get('Key')
+                content = props.get('Content', props.get('Body', ''))
+                
+                # S3 put_object body parameter validation
+                body_bytes = content.encode('utf-8') if isinstance(content, str) else content
+                s3.put_object(Bucket=bucket, Key=key, Body=body_bytes)
+                physical_id = f"{bucket}/{key}"
+                response_data['Bucket'] = bucket
+                response_data['Key'] = key
+            elif request_type == 'Delete':
+                if physical_id != 'unknown' and '/' in physical_id:
+                    bucket, key = physical_id.split('/', 1)
+                    try:
+                        s3.delete_object(Bucket=bucket, Key=key)
+                    except Exception:
+                        pass
+            elif request_type == 'Update':
+                pass
+
+    except Exception as e:
+        print("Error:", e)
+        status = 'FAILED'
+        response_data['Error'] = str(e)
+
+    response_body = json.dumps({
+        "Status": status,
+        "Reason": "See details in CloudWatch Log Stream",
+        "PhysicalResourceId": physical_id,
+        "StackId": event['StackId'],
+        "RequestId": event['RequestId'],
+        "LogicalResourceId": event['LogicalResourceId'],
+        "Data": response_data
+    }).encode('utf-8')
+    
+    req = urllib.request.Request(event['ResponseURL'], data=response_body, method='PUT')
+    req.add_header('Content-Type', '')
+    req.add_header('Content-Length', len(response_body))
+    try:
+        urllib.request.urlopen(req)
+    except Exception as e:
+        print("Failed to send response:", e)
+"""
+
+def inject_ec2_workaround(template_str: str) -> str:
+    """Finds AWS::EC2::Instance, EIP, EIPAssociation, and S3 Objects, replacing them with Custom resources.
+    Also merges standalone AWS::EC2::SecurityGroupIngress resources directly into AWS::EC2::SecurityGroup resources.
+    """
+    parsed = yaml.load(template_str, Loader=CfnSafeLoader)
+    if not isinstance(parsed, dict) or "Resources" not in parsed:
+        return template_str
+        
+    resources = parsed.get("Resources", {})
+    
+    # 1. Merge AWS::EC2::SecurityGroupIngress resources directly into AWS::EC2::SecurityGroup resources
+    ingress_resources = []
+    for logical_id, resource in list(resources.items()):
+        if not isinstance(resource, dict):
+            continue
+        if resource.get("Type") == "AWS::EC2::SecurityGroupIngress":
+            ingress_resources.append((logical_id, resource))
+
+    has_custom = False
+    for logical_id, resource in ingress_resources:
+        props = resource.get("Properties", {})
+        group_id_ref = props.get("GroupId")
+        
+        target_sg_id = None
+        if isinstance(group_id_ref, dict):
+            if "Ref" in group_id_ref:
+                target_sg_id = group_id_ref["Ref"]
+            elif "Fn::GetAtt" in group_id_ref:
+                val = group_id_ref["Fn::GetAtt"]
+                target_sg_id = val[0] if isinstance(val, list) else str(val).split(".")[0]
+        elif isinstance(group_id_ref, str):
+            target_sg_id = group_id_ref
+            
+        if target_sg_id and target_sg_id in resources:
+            target_sg = resources[target_sg_id]
+            if "Properties" not in target_sg:
+                target_sg["Properties"] = {}
+            if "SecurityGroupIngress" not in target_sg["Properties"]:
+                target_sg["Properties"]["SecurityGroupIngress"] = []
+                
+            rule = {k: v for k, v in props.items() if k != "GroupId"}
+            target_sg["Properties"]["SecurityGroupIngress"].append(rule)
+            
+            # Delete standalone resource
+            del resources[logical_id]
+            has_custom = True
+
+    # 2. Intercept unsupported types and convert to custom resources
+    for logical_id, resource in list(resources.items()):
+        if not isinstance(resource, dict):
+            continue
+        res_type = resource.get("Type")
+        if res_type in ("AWS::EC2::Instance", "AWS::EC2::EIP", "AWS::EC2::EIPAssociation"):
+            has_custom = True
+            custom_type = res_type.replace("AWS::EC2::", "Custom::MiniStack")
+            resource["Type"] = custom_type
+            if "Properties" not in resource:
+                resource["Properties"] = {}
+            resource["Properties"]["ServiceToken"] = {"Fn::GetAtt": ["StackMindEC2Provider", "Arn"]}
+        elif res_type in ("AWS::S3::BucketObject", "AWS::S3::Object"):
+            has_custom = True
+            resource["Type"] = "Custom::MiniStackS3Object"
+            if "Properties" not in resource:
+                resource["Properties"] = {}
+            resource["Properties"]["ServiceToken"] = {"Fn::GetAtt": ["StackMindEC2Provider", "Arn"]}
+
+    if not has_custom:
+        return template_str
+
+    # Inject the provider Lambda and Role
+    parsed["Resources"]["StackMindEC2ProviderRole"] = {
+        "Type": "AWS::IAM::Role",
+        "Properties": {
+            "AssumeRolePolicyDocument": {
+                "Statement": [{
+                    "Action": "sts:AssumeRole",
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"}
+                }]
+            },
+            "ManagedPolicyArns": [
+                "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+                "arn:aws:iam::aws:policy/AmazonEC2FullAccess",
+                "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+            ]
+        }
+    }
+    
+    parsed["Resources"]["StackMindEC2Provider"] = {
+        "Type": "AWS::Lambda::Function",
+        "Properties": {
+            "Handler": "index.handler",
+            "Role": {"Fn::GetAtt": ["StackMindEC2ProviderRole", "Arn"]},
+            "Runtime": "python3.12",
+            "Timeout": 60,
+            "Code": {"ZipFile": LAMBDA_CODE}
+        }
+    }
+
+    # Dump back to YAML
+    import io
+    output = io.StringIO()
+    yaml.dump(parsed, output, default_flow_style=False, sort_keys=False)
+    return output.getvalue()
+
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -269,12 +512,13 @@ async def deploy(req: DeployRequest):
         raise HTTPException(status_code=400, detail="stack_name and template are required.")
 
     validate_yaml(req.template)
+    final_template = inject_ec2_workaround(req.template)
 
     cfn = get_cfn_client()
     try:
         resp = cfn.create_stack(
             StackName=req.stack_name,
-            TemplateBody=req.template,
+            TemplateBody=final_template,
             Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"],
         )
     except cfn.exceptions.AlreadyExistsException:
@@ -289,6 +533,7 @@ async def deploy(req: DeployRequest):
 async def create_changeset(stack_name: str, req: ChangeSetRequest):
     """Create a change set (CREATE type for new stacks, UPDATE for existing)."""
     validate_yaml(req.template)
+    final_template = inject_ec2_workaround(req.template)
 
     cfn = get_cfn_client()
 
@@ -306,7 +551,7 @@ async def create_changeset(stack_name: str, req: ChangeSetRequest):
     try:
         cfn.create_change_set(
             StackName=stack_name,
-            TemplateBody=req.template,
+            TemplateBody=final_template,
             ChangeSetName=changeset_name,
             ChangeSetType=changeset_type,
             Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"],

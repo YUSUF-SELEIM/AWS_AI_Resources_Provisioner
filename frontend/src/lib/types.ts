@@ -84,6 +84,7 @@ export type DynamoItem = Record<string, string | number | boolean | null | unkno
 export interface DynamoScanResponse {
   items: DynamoItem[];
   count: number;
+  keys?: string[];
 }
 
 export interface SqsMessage {
@@ -104,4 +105,54 @@ export interface LambdaInvokeResponse {
   logs: string;
   function_error?: string;
 }
+
+// --- Phase 3B: S3 interaction types ---
+
+export interface S3Object {
+  key: string;
+  size: number;
+  last_modified: string | null;
+}
+
+export interface S3ListResponse {
+  objects: S3Object[];
+  count: number;
+}
+
+// --- Phase 3B: EC2 interaction types ---
+
+export interface Ec2InfoResponse {
+  instance_id: string;
+  state: string;
+  instance_type: string;
+  public_ip: string | null;
+  private_ip: string | null;
+  host_port: string | null;
+}
+
+export interface Ec2ConsoleResponse {
+  output: string;
+}
+
+// --- Phase 3B: RDS interaction types ---
+
+export interface RdsInfoResponse {
+  db_instance_identifier: string;
+  status: string;
+  address: string | null;
+  port: number | null;
+  engine: string;
+  engine_version: string;
+  db_instance_class: string;
+  allocated_storage: number;
+  db_name: string | null;
+  master_username: string | null;
+}
+
+export interface RdsQueryResponse {
+  records: Record<string, string | number | boolean | null | unknown>[];
+  numberOfRecordsUpdated: number;
+}
+
+
 

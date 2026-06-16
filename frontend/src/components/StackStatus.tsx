@@ -7,13 +7,13 @@ interface Props {
 
 const STATUS_CONFIG: Record<
   string,
-  { label: string; className: string; icon: string }
+  { label: string; className: string; }
 > = {
-  CREATE_IN_PROGRESS: { label: "Deploying…",    className: "badge badge-yellow", icon: "⏳" },
-  CREATE_COMPLETE:    { label: "Deployed",       className: "badge badge-green",  icon: "✅" },
-  CREATE_FAILED:      { label: "Failed",         className: "badge badge-red",    icon: "❌" },
-  ROLLBACK_IN_PROGRESS: { label: "Rolling back…", className: "badge badge-orange", icon: "🔄" },
-  ROLLBACK_COMPLETE:  { label: "Rolled back",    className: "badge badge-red",    icon: "↩️" },
+  CREATE_IN_PROGRESS: { label: "Deploying…",    className: "badge badge-yellow" },
+  CREATE_COMPLETE:    { label: "Deployed",       className: "badge badge-green" },
+  CREATE_FAILED:      { label: "Failed",         className: "badge badge-red" },
+  ROLLBACK_IN_PROGRESS: { label: "Rolling back…", className: "badge badge-orange" },
+  ROLLBACK_COMPLETE:  { label: "Rolled back",    className: "badge badge-red" },
 };
 
 export function StackStatus({ stackName }: Props) {
@@ -41,7 +41,6 @@ export function StackStatus({ stackName }: Props) {
   const cfg = STATUS_CONFIG[data.status] ?? {
     label: data.status,
     className: "badge badge-gray",
-    icon: "ℹ️",
   };
 
   const isFailed =
@@ -55,7 +54,7 @@ export function StackStatus({ stackName }: Props) {
         <div className="status-header">
           <h3 className="status-title">Stack Status</h3>
           <span className={cfg.className}>
-            {cfg.icon} {cfg.label}
+            {cfg.label}
           </span>
         </div>
 
@@ -72,7 +71,7 @@ export function StackStatus({ stackName }: Props) {
         {/* Success message */}
         {data.status === "CREATE_COMPLETE" && (
           <div className="alert alert-success mt-2" role="status">
-            🎉 Stack deployed successfully! Resources are live on MiniStack.
+            Stack deployed successfully! Resources are live on MiniStack.
             {data.outputs && data.outputs.length > 0 && (
               <ul className="output-list">
                 {data.outputs.map((o) => (
@@ -88,7 +87,7 @@ export function StackStatus({ stackName }: Props) {
         {/* Detailed failure breakdown from stack events */}
         {isFailed && data.failed_events && data.failed_events.length > 0 && (
           <div className="alert alert-error mt-2" role="alert">
-            <strong>❌ Deployment failed. Failed resources:</strong>
+            <strong>Deployment failed. Failed resources:</strong>
             <ul className="failed-events-list">
               {data.failed_events.map((e, i) => (
                 <li key={i}>
