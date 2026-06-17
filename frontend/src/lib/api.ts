@@ -37,6 +37,11 @@ export async function deployStack(
   return data;
 }
 
+export async function listStacks(): Promise<any[]> {
+  const { data } = await api.get<any[]>("/stacks");
+  return data;
+}
+
 export async function getStackStatus(stackName: string): Promise<StackStatusResponse> {
   const { data } = await api.get<StackStatusResponse>(`/stacks/${stackName}`);
   return data;
@@ -51,6 +56,12 @@ export async function deleteStack(stackName: string): Promise<{ ok: boolean }> {
   const { data } = await api.delete<{ ok: boolean }>(`/stacks/${stackName}`);
   return data;
 }
+
+export async function getStackScript(stackName: string): Promise<{ python_script: string }> {
+  const { data } = await api.get<{ python_script: string }>(`/stacks/${stackName}/script`);
+  return data;
+}
+
 
 // --- Phase 3A ---
 

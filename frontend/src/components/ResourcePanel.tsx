@@ -18,7 +18,12 @@ import {
   setRdsAction,
   runRdsQuery,
 } from "../lib/api";
-import type { DiagramNode, DynamoItem, SqsMessage, LambdaInvokeResponse } from "../lib/types";
+import type {
+  DiagramNode,
+  DynamoItem,
+  SqsMessage,
+  LambdaInvokeResponse,
+} from "../lib/types";
 
 // ---------------------------------------------------------------------------
 // Interactive resource types
@@ -43,7 +48,11 @@ function Skeleton({ lines = 3 }: { lines?: number }) {
   return (
     <div className="skeleton-group">
       {Array.from({ length: lines }).map((_, i) => (
-        <div key={i} className="skeleton-line" style={{ width: `${70 + (i % 3) * 15}%` }} />
+        <div
+          key={i}
+          className="skeleton-line"
+          style={{ width: `${70 + (i % 3) * 15}%` }}
+        />
       ))}
     </div>
   );
@@ -63,7 +72,13 @@ function ErrorAlert({ message }: { message: string }) {
 // ---------------------------------------------------------------------------
 // DynamoDB Panel
 // ---------------------------------------------------------------------------
-function DynamoPanel({ stackName, logicalId }: { stackName: string; logicalId: string }) {
+function DynamoPanel({
+  stackName,
+  logicalId,
+}: {
+  stackName: string;
+  logicalId: string;
+}) {
   const qc = useQueryClient();
   const [newItem, setNewItem] = useState<{ key: string; value: string }[]>([
     { key: "", value: "" },
@@ -77,8 +92,13 @@ function DynamoPanel({ stackName, logicalId }: { stackName: string; logicalId: s
   });
 
   useEffect(() => {
-    if (data?.keys && data.keys.length > 0 && newItem.length === 1 && newItem[0].key === "") {
-      setNewItem(data.keys.map(k => ({ key: k, value: "" })));
+    if (
+      data?.keys &&
+      data.keys.length > 0 &&
+      newItem.length === 1 &&
+      newItem[0].key === ""
+    ) {
+      setNewItem(data.keys.map((k) => ({ key: k, value: "" })));
     }
   }, [data?.keys]);
 
@@ -88,15 +108,16 @@ function DynamoPanel({ stackName, logicalId }: { stackName: string; logicalId: s
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dynamo", stackName, logicalId] });
       if (data?.keys && data.keys.length > 0) {
-        setNewItem(data.keys.map(k => ({ key: k, value: "" })));
+        setNewItem(data.keys.map((k) => ({ key: k, value: "" })));
       } else {
         setNewItem([{ key: "", value: "" }]);
       }
       setAddError("");
     },
     onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? (e as Error).message;
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? (e as Error).message;
       setAddError(msg);
     },
   });
@@ -133,9 +154,7 @@ function DynamoPanel({ stackName, logicalId }: { stackName: string; logicalId: s
       <div className="panel-section-title">Items ({data?.count ?? 0})</div>
 
       {isLoading && <Skeleton lines={4} />}
-      {error && (
-        <ErrorAlert message={(error as Error).message} />
-      )}
+      {error && <ErrorAlert message={(error as Error).message} />}
 
       {!isLoading && items.length === 0 && (
         <div className="panel-empty">No items yet. Add one below.</div>
@@ -146,7 +165,9 @@ function DynamoPanel({ stackName, logicalId }: { stackName: string; logicalId: s
           <table className="dynamo-table">
             <thead>
               <tr>
-                {allKeys.map((k) => <th key={k}>{k}</th>)}
+                {allKeys.map((k) => (
+                  <th key={k}>{k}</th>
+                ))}
                 <th>Delete</th>
               </tr>
             </thead>
@@ -246,7 +267,13 @@ function DynamoPanel({ stackName, logicalId }: { stackName: string; logicalId: s
 // ---------------------------------------------------------------------------
 // SQS Panel
 // ---------------------------------------------------------------------------
-function SqsPanel({ stackName, logicalId }: { stackName: string; logicalId: string }) {
+function SqsPanel({
+  stackName,
+  logicalId,
+}: {
+  stackName: string;
+  logicalId: string;
+}) {
   const [messageBody, setMessageBody] = useState('{"event": "test"}');
   const [received, setReceived] = useState<SqsMessage[]>([]);
   const [sendStatus, setSendStatus] = useState("");
@@ -259,8 +286,9 @@ function SqsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
       setTimeout(() => setSendStatus(""), 4000);
     },
     onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? (e as Error).message;
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? (e as Error).message;
       setSendStatus(`Error: ${msg}`);
     },
   });
@@ -272,8 +300,9 @@ function SqsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
       setPollError("");
     },
     onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? (e as Error).message;
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? (e as Error).message;
       setPollError(msg);
     },
   });
@@ -298,8 +327,10 @@ function SqsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
         {sendMutation.isPending ? "Sending…" : "Send Message"}
       </button>
       {sendStatus && (
-        <div className={`alert ${sendStatus.startsWith("Error") ? "alert-error" : "alert-success"}`}
-          style={{ marginTop: "0.5rem" }}>
+        <div
+          className={`alert ${sendStatus.startsWith("Error") ? "alert-error" : "alert-success"}`}
+          style={{ marginTop: "0.5rem" }}
+        >
           {sendStatus}
         </div>
       )}
@@ -322,7 +353,9 @@ function SqsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
           {received.map((m, i) => (
             <div key={m.message_id ?? i} className="sqs-message-item">
               <div className="sqs-message-meta">
-                <span className="badge badge-gray">{m.message_id?.slice(0, 8)}…</span>
+                <span className="badge badge-gray">
+                  {m.message_id?.slice(0, 8)}…
+                </span>
                 {m.sent_timestamp && (
                   <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
                     {new Date(Number(m.sent_timestamp)).toLocaleTimeString()}
@@ -344,13 +377,23 @@ function SqsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
 // ---------------------------------------------------------------------------
 // Lambda Panel
 // ---------------------------------------------------------------------------
-function LambdaPanel({ stackName, logicalId }: { stackName: string; logicalId: string }) {
+function LambdaPanel({
+  stackName,
+  logicalId,
+}: {
+  stackName: string;
+  logicalId: string;
+}) {
   const [activeTab, setActiveTab] = useState<"invoke" | "logs">("invoke");
   const [payload, setPayload] = useState("{}");
   const [result, setResult] = useState<LambdaInvokeResponse | null>(null);
   const [invokeError, setInvokeError] = useState("");
 
-  const { data: logsData, isLoading: logsLoading, refetch: refetchLogs } = useQuery({
+  const {
+    data: logsData,
+    isLoading: logsLoading,
+    refetch: refetchLogs,
+  } = useQuery({
     queryKey: ["lambda", stackName, logicalId, "logs"],
     queryFn: () => getLambdaLogs(stackName, logicalId),
     enabled: activeTab === "logs",
@@ -371,8 +414,9 @@ function LambdaPanel({ stackName, logicalId }: { stackName: string; logicalId: s
       setInvokeError("");
     },
     onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? (e as Error).message;
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? (e as Error).message;
       setInvokeError(msg);
     },
   });
@@ -412,18 +456,29 @@ function LambdaPanel({ stackName, logicalId }: { stackName: string; logicalId: s
           >
             {invokeMutation.isPending ? "Invoking…" : "Invoke Function"}
           </button>
-          
+
           {invokeError && <ErrorAlert message={invokeError} />}
 
           {result && (
             <div style={{ marginTop: "1.25rem" }}>
               <div className="panel-section-title">Invocation Result</div>
               {result.function_error && (
-                <div className="alert alert-error" style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
+                <div
+                  className="alert alert-error"
+                  style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}
+                >
                   <strong>Function error:</strong> {result.function_error}
                 </div>
               )}
-              <pre className="lambda-output" style={{ fontSize: "12px", background: "var(--bg-card)", padding: "0.75rem", borderRadius: 4 }}>
+              <pre
+                className="lambda-output"
+                style={{
+                  fontSize: "12px",
+                  background: "var(--bg-card)",
+                  padding: "0.75rem",
+                  borderRadius: 4,
+                }}
+              >
                 {JSON.stringify(result.response, null, 2)}
               </pre>
             </div>
@@ -433,10 +488,19 @@ function LambdaPanel({ stackName, logicalId }: { stackName: string; logicalId: s
 
       {activeTab === "logs" && (
         <div className="panel-tab-content">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
-            <span className="panel-section-title" style={{ margin: 0 }}>CloudWatch Logs</span>
-            <button 
-              className="btn btn-secondary btn-sm" 
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "0.75rem",
+            }}
+          >
+            <span className="panel-section-title" style={{ margin: 0 }}>
+              CloudWatch Logs
+            </span>
+            <button
+              className="btn btn-secondary btn-sm"
               onClick={() => refetchLogs()}
               disabled={logsLoading}
             >
@@ -457,10 +521,11 @@ function LambdaPanel({ stackName, logicalId }: { stackName: string; logicalId: s
                 padding: "1rem",
                 borderRadius: "6px",
                 fontFamily: "monospace",
-                whiteSpace: "pre-wrap"
+                whiteSpace: "pre-wrap",
               }}
             >
-              {logsData?.logs || "No logs available. Trigger or invoke the function to write logs."}
+              {logsData?.logs ||
+                "No logs available. Trigger or invoke the function to write logs."}
             </pre>
           )}
         </div>
@@ -472,7 +537,13 @@ function LambdaPanel({ stackName, logicalId }: { stackName: string; logicalId: s
 // ---------------------------------------------------------------------------
 // S3 Panel
 // ---------------------------------------------------------------------------
-function S3Panel({ stackName, logicalId }: { stackName: string; logicalId: string }) {
+function S3Panel({
+  stackName,
+  logicalId,
+}: {
+  stackName: string;
+  logicalId: string;
+}) {
   const qc = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
@@ -493,7 +564,8 @@ function S3Panel({ stackName, logicalId }: { stackName: string; logicalId: strin
   });
 
   const uploadMutation = useMutation({
-    mutationFn: () => uploadS3Object(stackName, logicalId, newKey.trim(), newContent),
+    mutationFn: () =>
+      uploadS3Object(stackName, logicalId, newKey.trim(), newContent),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["s3", stackName, logicalId] });
       setNewKey("");
@@ -501,8 +573,9 @@ function S3Panel({ stackName, logicalId }: { stackName: string; logicalId: strin
       setUploadError("");
     },
     onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? (e as Error).message;
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? (e as Error).message;
       setUploadError(msg);
     },
   });
@@ -529,7 +602,10 @@ function S3Panel({ stackName, logicalId }: { stackName: string; logicalId: strin
       )}
 
       {objects.length > 0 && (
-        <div className="dynamo-table-wrapper" style={{ marginBottom: "1.25rem" }}>
+        <div
+          className="dynamo-table-wrapper"
+          style={{ marginBottom: "1.25rem" }}
+        >
           <table className="dynamo-table">
             <thead>
               <tr>
@@ -572,7 +648,9 @@ function S3Panel({ stackName, logicalId }: { stackName: string; logicalId: strin
         <div className="panel-section-title" style={{ marginBottom: "0.5rem" }}>
           Upload/Put Object
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
+        >
           <input
             className="kv-input"
             style={{ width: "100%", boxSizing: "border-box" }}
@@ -603,28 +681,42 @@ function S3Panel({ stackName, logicalId }: { stackName: string; logicalId: strin
   );
 }
 
-
 // ---------------------------------------------------------------------------
 // EC2 Panel
 // ---------------------------------------------------------------------------
-function Ec2Panel({ stackName, logicalId }: { stackName: string; logicalId: string }) {
+function Ec2Panel({
+  stackName,
+  logicalId,
+}: {
+  stackName: string;
+  logicalId: string;
+}) {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"info" | "console">("info");
 
-  const { data: info, isLoading: infoLoading, error: infoError } = useQuery({
+  const {
+    data: info,
+    isLoading: infoLoading,
+    error: infoError,
+  } = useQuery({
     queryKey: ["ec2", stackName, logicalId, "info"],
     queryFn: () => getEc2Info(stackName, logicalId),
     refetchInterval: 5000,
   });
 
-  const { data: consoleData, isLoading: consoleLoading, refetch: refetchConsole } = useQuery({
+  const {
+    data: consoleData,
+    isLoading: consoleLoading,
+    refetch: refetchConsole,
+  } = useQuery({
     queryKey: ["ec2", stackName, logicalId, "console"],
     queryFn: () => getEc2Console(stackName, logicalId),
     enabled: activeTab === "console",
   });
 
   const stateMutation = useMutation({
-    mutationFn: (action: "start" | "stop" | "reboot") => setEc2State(stackName, logicalId, action),
+    mutationFn: (action: "start" | "stop" | "reboot") =>
+      setEc2State(stackName, logicalId, action),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ec2", stackName, logicalId, "info"] });
     },
@@ -658,14 +750,30 @@ function Ec2Panel({ stackName, logicalId }: { stackName: string; logicalId: stri
             <>
               <div className="panel-section">
                 <h3 className="panel-section-title">Status</h3>
-                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "1rem" }}>
-                  <span className={`badge ${isRunning ? "badge-green" : isStopped ? "badge-red" : ""}`}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    alignItems: "center",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  <span
+                    className={`badge ${isRunning ? "badge-green" : isStopped ? "badge-red" : ""}`}
+                  >
                     {info.state.toUpperCase()}
                   </span>
                   <span>({info.instance_type})</span>
                 </div>
 
-                <div className="button-group" style={{ marginBottom: "1.5rem" }}>
+                <div
+                  className="button-group"
+                  style={{
+                    marginBottom: "1.5rem",
+                    display: "flex",
+                    gap: "0.5rem",
+                  }}
+                >
                   <button
                     className="btn btn-primary"
                     disabled={isRunning || stateMutation.isPending}
@@ -695,53 +803,109 @@ function Ec2Panel({ stackName, logicalId }: { stackName: string; logicalId: stri
                 <div className="info-grid" style={{ marginBottom: "1rem" }}>
                   <div className="info-item">
                     <span className="info-label">Public IP</span>
-                    <span className="info-value">{info.public_ip || "None"}</span>
+                    <span className="info-value">
+                      {info.public_ip || "None"}
+                    </span>
                   </div>
                   <div className="info-item">
                     <span className="info-label">Private IP</span>
-                    <span className="info-value">{info.private_ip || "None"}</span>
+                    <span className="info-value">
+                      {info.private_ip || "None"}
+                    </span>
                   </div>
                 </div>
 
                 {info.public_ip && isRunning ? (
                   <>
                     <h3 className="panel-section-title">SSH Access</h3>
-                    <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: "0.5rem" }}>
+                    <p
+                      style={{
+                        fontSize: 13,
+                        color: "var(--text-secondary)",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
                       Run this command in your terminal to connect:
                     </p>
-                    <div className="code-block" style={{ padding: "0.5rem", background: "var(--bg-card)", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}>
+                    <div
+                      className="code-block"
+                      style={{
+                        padding: "0.5rem",
+                        background: "var(--bg-card)",
+                        borderRadius: 4,
+                        fontFamily: "monospace",
+                        fontSize: 13,
+                      }}
+                    >
                       ssh -i my-ec2-key.pem ec2-user@{info.public_ip}
                     </div>
                   </>
                 ) : isRunning ? (
                   <div style={{ marginTop: "1rem" }}>
                     <h3 className="panel-section-title">Local Dev Container</h3>
-                    <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: "0.75rem" }}>
-                      An ephemeral container has been automatically spun up in the MiniStack network.
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--text-secondary)",
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      An ephemeral container has been automatically spun up in
+                      the MiniStack network.
                     </p>
-                    
+
                     {info.host_port ? (
                       <div style={{ marginBottom: "1rem" }}>
-                        <span className="info-label" style={{ display: "block", marginBottom: "0.25rem" }}>Access Web Server (Host Browser)</span>
-                        <a 
-                          href={`http://localhost:${info.host_port}`} 
-                          target="_blank" 
+                        <span
+                          className="info-label"
+                          style={{ display: "block", marginBottom: "0.25rem" }}
+                        >
+                          Access Web Server (Host Browser)
+                        </span>
+                        <a
+                          href={`http://localhost:${info.host_port}`}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="resource-id"
-                          style={{ color: "var(--accent)", textDecoration: "underline", fontSize: 13, fontWeight: "bold" }}
+                          style={{
+                            color: "var(--accent)",
+                            textDecoration: "underline",
+                            fontSize: 13,
+                            fontWeight: "bold",
+                          }}
                         >
                           http://localhost:{info.host_port}
                         </a>
                       </div>
                     ) : (
-                      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "1rem" }}>
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-muted)",
+                          marginBottom: "1rem",
+                        }}
+                      >
                         Port mapping not available (container starting up...).
                       </p>
                     )}
 
                     <div>
-                      <span className="info-label" style={{ display: "block", marginBottom: "0.25rem" }}>VPC Internal Address (Lambda / SQS / VPC)</span>
-                      <div className="code-block" style={{ padding: "0.5rem", background: "var(--bg-card)", borderRadius: 4, fontFamily: "monospace", fontSize: 12 }}>
+                      <span
+                        className="info-label"
+                        style={{ display: "block", marginBottom: "0.25rem" }}
+                      >
+                        VPC Internal Address (Lambda / SQS / VPC)
+                      </span>
+                      <div
+                        className="code-block"
+                        style={{
+                          padding: "0.5rem",
+                          background: "var(--bg-card)",
+                          borderRadius: 4,
+                          fontFamily: "monospace",
+                          fontSize: 12,
+                        }}
+                      >
                         http://{logicalId}
                       </div>
                     </div>
@@ -755,8 +919,17 @@ function Ec2Panel({ stackName, logicalId }: { stackName: string; logicalId: stri
 
       {activeTab === "console" && (
         <div className="panel-tab-content">
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
-            <button className="btn btn-secondary" onClick={() => refetchConsole()}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              marginBottom: "0.5rem",
+            }}
+          >
+            <button
+              className="btn btn-secondary"
+              onClick={() => refetchConsole()}
+            >
               Refresh
             </button>
           </div>
@@ -772,10 +945,11 @@ function Ec2Panel({ stackName, logicalId }: { stackName: string; logicalId: stri
                 backgroundColor: "#f1f3f5",
                 color: "#0f172a",
                 padding: "1rem",
-                borderRadius: "6px"
+                borderRadius: "6px",
               }}
             >
-              {consoleData?.output || "No console output available yet (try refreshing in a minute)."}
+              {consoleData?.output ||
+                "No console output available yet (try refreshing in a minute)."}
             </pre>
           )}
         </div>
@@ -787,7 +961,13 @@ function Ec2Panel({ stackName, logicalId }: { stackName: string; logicalId: stri
 // ---------------------------------------------------------------------------
 // RDS Panel
 // ---------------------------------------------------------------------------
-function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: string }) {
+function RdsPanel({
+  stackName,
+  logicalId,
+}: {
+  stackName: string;
+  logicalId: string;
+}) {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"info" | "query">("info");
   const [sql, setSql] = useState("SELECT * FROM test_users;");
@@ -797,7 +977,11 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
     error?: string;
   } | null>(null);
 
-  const { data: db, isLoading, error } = useQuery({
+  const {
+    data: db,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["rds", stackName, logicalId],
     queryFn: () => getRdsInfo(stackName, logicalId),
     refetchInterval: 5000,
@@ -811,7 +995,8 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
   });
 
   const queryMutation = useMutation({
-    mutationFn: (queryText: string) => runRdsQuery(stackName, logicalId, queryText),
+    mutationFn: (queryText: string) =>
+      runRdsQuery(stackName, logicalId, queryText),
     onSuccess: (data) => {
       setQueryResult({
         records: data.records,
@@ -819,8 +1004,9 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
       });
     },
     onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? (e as Error).message;
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail ?? (e as Error).message;
       setQueryResult({
         records: [],
         numberOfRecordsUpdated: 0,
@@ -833,8 +1019,14 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
 
   const templates = [
     { label: "Show Tables", sql: "SHOW TABLES;" },
-    { label: "Create Table", sql: "CREATE TABLE IF NOT EXISTS test_users (id INT PRIMARY KEY, name VARCHAR(50));" },
-    { label: "Insert Row", sql: "INSERT INTO test_users (id, name) VALUES (1, 'Alice');" },
+    {
+      label: "Create Table",
+      sql: "CREATE TABLE IF NOT EXISTS test_users (id INT PRIMARY KEY, name VARCHAR(50));",
+    },
+    {
+      label: "Insert Row",
+      sql: "INSERT INTO test_users (id, name) VALUES (1, 'Alice');",
+    },
     { label: "Select All", sql: "SELECT * FROM test_users;" },
   ];
 
@@ -863,20 +1055,38 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
             <>
               <div className="panel-section">
                 <h3 className="panel-section-title">Status</h3>
-                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "1rem" }}>
-                  <span className={`badge ${isAvailable ? "badge-green" : "badge-orange"}`}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    alignItems: "center",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  <span
+                    className={`badge ${isAvailable ? "badge-green" : "badge-orange"}`}
+                  >
                     {db.status.toUpperCase()}
                   </span>
                   <span>({db.db_instance_class})</span>
                 </div>
 
-                <div className="button-group" style={{ marginBottom: "1.5rem" }}>
+                <div
+                  className="button-group"
+                  style={{
+                    marginBottom: "1.5rem",
+                    display: "flex",
+                    gap: "0.5rem",
+                  }}
+                >
                   <button
                     className="btn btn-secondary"
                     disabled={!isAvailable || rebootMutation.isPending}
                     onClick={() => rebootMutation.mutate()}
                   >
-                    {rebootMutation.isPending ? "Rebooting..." : "Reboot DB Instance"}
+                    {rebootMutation.isPending
+                      ? "Rebooting..."
+                      : "Reboot DB Instance"}
                   </button>
                 </div>
               </div>
@@ -886,7 +1096,9 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
                 <div className="info-grid" style={{ marginBottom: "1rem" }}>
                   <div className="info-item">
                     <span className="info-label">Engine</span>
-                    <span className="info-value">{db.engine} {db.engine_version}</span>
+                    <span className="info-value">
+                      {db.engine} {db.engine_version}
+                    </span>
                   </div>
                   <div className="info-item">
                     <span className="info-label">DB Name</span>
@@ -894,11 +1106,15 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
                   </div>
                   <div className="info-item">
                     <span className="info-label">Master Username</span>
-                    <span className="info-value">{db.master_username || "N/A"}</span>
+                    <span className="info-value">
+                      {db.master_username || "N/A"}
+                    </span>
                   </div>
                   <div className="info-item">
                     <span className="info-label">Allocated Storage</span>
-                    <span className="info-value">{db.allocated_storage} GB</span>
+                    <span className="info-value">
+                      {db.allocated_storage} GB
+                    </span>
                   </div>
                 </div>
               </div>
@@ -907,8 +1123,22 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
                 <div className="panel-section">
                   <h3 className="panel-section-title">Endpoint</h3>
                   <div style={{ marginBottom: "1rem" }}>
-                    <span className="info-label" style={{ display: "block", marginBottom: "0.25rem" }}>Connection String</span>
-                    <div className="code-block" style={{ padding: "0.5rem", background: "var(--bg-card)", borderRadius: 4, fontFamily: "monospace", fontSize: 12 }}>
+                    <span
+                      className="info-label"
+                      style={{ display: "block", marginBottom: "0.25rem" }}
+                    >
+                      Connection String
+                    </span>
+                    <div
+                      className="code-block"
+                      style={{
+                        padding: "0.5rem",
+                        background: "var(--bg-card)",
+                        borderRadius: 4,
+                        fontFamily: "monospace",
+                        fontSize: 12,
+                      }}
+                    >
                       {db.address}:{db.port}
                     </div>
                   </div>
@@ -923,7 +1153,14 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
         <div className="panel-tab-content">
           <div className="panel-section">
             <h3 className="panel-section-title">Common Templates</h3>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                flexWrap: "wrap",
+                marginBottom: "1rem",
+              }}
+            >
               {templates.map((tpl, idx) => (
                 <button
                   key={idx}
@@ -963,7 +1200,9 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
               onClick={() => queryMutation.mutate(sql)}
               style={{ width: "100%", marginBottom: "1.25rem" }}
             >
-              {queryMutation.isPending ? "Executing SQL..." : "Execute Statement"}
+              {queryMutation.isPending
+                ? "Executing SQL..."
+                : "Execute Statement"}
             </button>
           </div>
 
@@ -973,7 +1212,10 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
               queryResult.error ? (
                 <ErrorAlert message={queryResult.error} />
               ) : queryResult.records.length > 0 ? (
-                <div className="dynamo-table-wrapper" style={{ maxHeight: "250px", overflowY: "auto" }}>
+                <div
+                  className="dynamo-table-wrapper"
+                  style={{ maxHeight: "250px", overflowY: "auto" }}
+                >
                   <table className="dynamo-table">
                     <thead>
                       <tr>
@@ -998,13 +1240,23 @@ function RdsPanel({ stackName, logicalId }: { stackName: string; logicalId: stri
                   </table>
                 </div>
               ) : (
-                <div className="alert alert-success" role="alert" style={{ fontSize: 12 }}>
+                <div
+                  className="alert alert-success"
+                  role="alert"
+                  style={{ fontSize: 12 }}
+                >
                   Statement executed successfully. Number of records updated:{" "}
                   <strong>{queryResult.numberOfRecordsUpdated}</strong>.
                 </div>
               )
             ) : (
-              <p style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  fontStyle: "italic",
+                }}
+              >
                 Execute a statement to see the results here.
               </p>
             )}
@@ -1024,9 +1276,15 @@ function InfoPanel({ node }: { node: DiagramNode }) {
       <div className="panel-empty" style={{ textAlign: "left" }}>
         <p style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{node.label}</p>
         <p style={{ color: "var(--text-muted)", fontSize: 13 }}>{node.type}</p>
-        <p style={{ marginTop: "0.75rem", fontSize: 13, color: "var(--text-secondary)" }}>
-          This resource type does not have an interactive panel.
-          Inspect it in the resources table below.
+        <p
+          style={{
+            marginTop: "0.75rem",
+            fontSize: 13,
+            color: "var(--text-secondary)",
+          }}
+        >
+          This resource type does not have an interactive panel. Inspect it in
+          the resources table below.
         </p>
       </div>
     </div>
@@ -1042,7 +1300,11 @@ interface ResourcePanelProps {
   onClose: () => void;
 }
 
-export function ResourcePanel({ node, stackName, onClose }: ResourcePanelProps) {
+export function ResourcePanel({
+  node,
+  stackName,
+  onClose,
+}: ResourcePanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape
@@ -1063,7 +1325,10 @@ export function ResourcePanel({ node, stackName, onClose }: ResourcePanelProps) 
     }
     if (node) {
       // slight delay so the opening click doesn't immediately close it
-      const t = setTimeout(() => document.addEventListener("mousedown", onClick), 50);
+      const t = setTimeout(
+        () => document.addEventListener("mousedown", onClick),
+        50,
+      );
       return () => {
         clearTimeout(t);
         document.removeEventListener("mousedown", onClick);
@@ -1101,15 +1366,23 @@ export function ResourcePanel({ node, stackName, onClose }: ResourcePanelProps) 
       <aside className="resource-panel open" ref={panelRef}>
         <div className="panel-header">
           <div className="panel-header-info">
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+            >
               <h2 className="panel-title">{node.label}</h2>
               {interactive && (
-                <span className="badge badge-blue" style={{ fontSize: 10 }}>Interactive</span>
+                <span className="badge badge-blue" style={{ fontSize: 10 }}>
+                  Interactive
+                </span>
               )}
             </div>
             <p className="panel-subtitle">{node.type}</p>
           </div>
-          <button className="panel-close" onClick={onClose} aria-label="Close panel">
+          <button
+            className="panel-close"
+            onClick={onClose}
+            aria-label="Close panel"
+          >
             ✕
           </button>
         </div>

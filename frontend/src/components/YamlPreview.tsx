@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useChangeset } from "../hooks/useChangeset";
 
 interface Props {
@@ -22,7 +22,11 @@ function deriveStackName(script: string): string {
 
 export function YamlPreview({ yaml, onChange, onPreviewChanges }: Props) {
   const { mutate, isPending, error } = useChangeset();
-  const [stackName] = useState(() => deriveStackName(yaml));
+  const [stackName, setStackName] = useState(() => deriveStackName(yaml));
+
+  useEffect(() => {
+    setStackName(deriveStackName(yaml));
+  }, [yaml]);
 
   const handlePreview = () => {
     mutate(
@@ -46,8 +50,17 @@ export function YamlPreview({ yaml, onChange, onPreviewChanges }: Props) {
         value={yaml}
         onChange={(e) => onChange(e.target.value)}
       />
-      <div className="yaml-footer">
-        <span className="stack-name-label">Stack: <code>{stackName}</code></span>
+      <div className="yaml-footer" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+        <span className="stack-name-label" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+          Stack Name:
+          <input
+            type="text"
+            className="prompt-textarea"
+            style={{ padding: "0.25rem 0.5rem", width: "180px", margin: 0, fontSize: "0.85rem", height: "auto" }}
+            value={stackName}
+            onChange={(e) => setStackName(e.target.value)}
+          />
+        </span>
         <button
           id="preview-changes-btn"
           className="btn btn-primary"

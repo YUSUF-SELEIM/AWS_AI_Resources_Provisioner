@@ -714,6 +714,13 @@ async def execute_changeset(stack_name: str, changeset_name: str):
     return ExecuteChangeSetResponse(ok=True)
 
 
+@app.get("/stacks")
+async def get_all_stacks():
+    """List all deployed stacks in the state manager."""
+    from state_manager import list_stacks
+    return list_stacks()
+
+
 @app.get("/stacks/{stack_name}", response_model=StackStatusResponse)
 async def get_stack_status(stack_name: str):
     """Poll the status of a deployed stack."""
@@ -732,6 +739,20 @@ async def get_stack_status(stack_name: str):
         outputs=[],
         failed_events=None,
     )
+
+
+@app.get("/stacks/{stack_name}/script")
+async def get_stack_script(stack_name: str):
+    """Retrieve the Python provisioning script for a stack."""
+    from state_manager import load_stack_state
+    try:
+        state = load_stack_state(stack_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Stack '{stack_name}' not found.")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Error reading stack state: {exc}")
+    return {"python_script": state.get("PythonScript", "")}
+
 
 
 @app.get("/stacks/{stack_name}/resources", response_model=list[StackResource])

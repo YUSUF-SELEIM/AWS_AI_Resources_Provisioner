@@ -84,13 +84,6 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
   gap: 2.5rem;
 }
 
-.app-footer {
-  text-align: center;
-  padding: 1.5rem;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  border-top: 1px solid var(--border);
-}
 
 /* ─── Step sections ──────────────────────────────────────── */
 .step-section {
@@ -368,7 +361,7 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
 .chip {
   background: rgba(37,99,235,0.06);
   border: 1px solid rgba(37,99,235,0.2);
-  color: #2563eb;
+  color: #000000;
   border-radius: 999px;
   padding: 0.3rem 0.85rem;
   font-size: 0.78rem;
@@ -380,7 +373,7 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
 
 .chip:hover:not(:disabled) {
   background: rgba(37,99,235,0.12);
-  border-color: rgba(37,99,235,0.4);
+  border: 1px solid rgba(37,99,235,0.2);
   transform: translateY(-1px);
 }
 
@@ -966,4 +959,76 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ─── Sidebar layout ─────────────────────────────────────── */
+.app-container {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: calc(100vh - 73px); /* Subtract header height */
+  overflow: hidden;
+}
+
+.app-sidebar {
+  width: 320px;
+  border-right: 2px solid var(--border);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.app-content {
+  flex: 1;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sidebar-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 0.625rem 0.875rem;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.menu-item:hover {
+  background: var(--bg-card-hover);
+}
+
+.menu-item.active {
+  background: #000000;
+  color: #ffffff;
+  border-color: #000000;
 }

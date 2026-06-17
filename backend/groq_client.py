@@ -15,7 +15,12 @@ RULES:
 1. Always point boto3 clients to the local endpoint URL:
    `boto3.client('s3', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')`
 2. Create all resources sequentially. Ensure that dependencies are created first (e.g. create IAM Role before Lambda function).
-3. If creating a Lambda function:
+3. IDEMPOTENCY RULE: Your script MUST be idempotent. If a resource already exists (e.g., S3 bucket, Security Group, IAM Role, Table, Lambda function), do NOT crash. Check if it exists or use try-except blocks to catch duplicate/exists errors, and reuse or update the existing resource:
+   - S3 Bucket: Catch `BucketAlreadyExists` or `BucketAlreadyOwnedByYou` and pass.
+   - IAM Role: Catch `EntityAlreadyExistsException` and call `get_role` to retrieve the Arn.
+   - Lambda Function: Catch `ResourceConflictException` and call `update_function_code`/`update_function_configuration`.
+   - Security Group: Catch `ClientError` matching `Duplicate` and call `describe_security_groups` to get the GroupId.
+4. If creating a Lambda function:
    - Use zipfile in python to package the code dynamically.
    - Use `index.handler` as the handler.
    - Inject any configuration variables (like bucket name) into the Lambda's environment variables.
@@ -23,13 +28,13 @@ RULES:
    - ROBUSTNESS RULE (Event Validation): Always check if expected keys (like `'Records'`) are present in the `event` dictionary before accessing them. S3 and other services send mock/test events (e.g., `s3:TestEvent`) during configuration setup that lack `Records`, which will crash the function with KeyError if not guarded.
    - ROBUSTNESS RULE (Recursion/Loop Prevention): If the Lambda is triggered by updates/creations on a resource (like an S3 bucket or DynamoDB table) and writes/copies/deletes back to that SAME resource, you MUST check if the file/item is already processed (e.g., check if S3 key starts with your prefix/suffix) to return early and prevent infinite trigger loops.
    - ROBUSTNESS RULE (Error Handling): Wrap handler logic in try-except blocks, print errors to stdout for logs, and return clean response dictionaries.
-4. S3 Bucket Notifications:
+5. S3 Bucket Notifications:
    - Always configure the `s3api` notifications properly using direct API calls (e.g. `s3.put_bucket_notification_configuration`) after setting the Lambda function permissions.
-5. DIAGRAM_METADATA Block:
+6. DIAGRAM_METADATA Block:
    - You MUST prepend a commented JSON block at the very top of your Python script.
    - It must start with `# DIAGRAM_METADATA:` followed by commented JSON lines.
    - It lists resources and references between them.
-6. Tracking Resources:
+7. Tracking Resources:
    - At the very end of the script, build a Python dictionary of the created resources.
    - The dictionary MUST have a key "resources" containing a list of objects with keys: "LogicalResourceId", "PhysicalResourceId", "ResourceType".
    - You MUST print this dictionary as a single-line JSON string at the very end of stdout using `print(json.dumps(state))`.
@@ -59,24 +64,31 @@ s3 = boto3.client('s3', endpoint_url='http://ministack:4566', region_name='us-ea
 iam = boto3.client('iam', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
 awslambda = boto3.client('lambda', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
 
-# 1. Create S3 Bucket
+# 1. Create S3 Bucket (Idempotent)
 bucket_name = 'my-image-bucket'
-s3.create_bucket(Bucket=bucket_name)
+try:
+    s3.create_bucket(Bucket=bucket_name)
+except Exception:
+    pass
 
-# 2. Create IAM Role
+# 2. Create IAM Role (Idempotent)
 role_name = 'image-rename-role'
 assume_role_policy = {
     "Version": "2012-10-17",
     "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]
 }
-role_resp = iam.create_role(
-    RoleName=role_name,
-    AssumeRolePolicyDocument=json.dumps(assume_role_policy)
-)
-role_arn = role_resp['Role']['Arn']
+try:
+    role_resp = iam.create_role(
+        RoleName=role_name,
+        AssumeRolePolicyDocument=json.dumps(assume_role_policy)
+    )
+    role_arn = role_resp['Role']['Arn']
+except iam.exceptions.EntityAlreadyExistsException:
+    role_resp = iam.get_role(RoleName=role_name)
+    role_arn = role_resp['Role']['Arn']
 
-# 3. Create Lambda Function
-lambda_code = \"\"\"
+# 3. Create Lambda Function (Idempotent)
+lambda_code = """
 import os
 import boto3
 import urllib.parse
@@ -84,37 +96,58 @@ import urllib.parse
 s3 = boto3.client('s3', endpoint_url='http://ministack:4566')
 
 def handler(event, context):
-    bucket_name = os.environ.get("BUCKET_NAME")
-    object_key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
-    if object_key.startswith('changed-'):
-        return {'statusCode': 200, 'body': 'Already processed'}
-    new_object_key = 'changed-' + object_key
-    s3.copy_object(Bucket=bucket_name, CopySource={'Bucket': bucket_name, 'Key': object_key}, Key=new_object_key)
-    s3.delete_object(Bucket=bucket_name, Key=object_key)
-    return {'statusCode': 200, 'body': 'OK'}
-\"\"\"
+    try:
+        if 'Records' not in event:
+            return {'statusCode': 200, 'body': 'No Records found'}
+        bucket_name = os.environ.get("BUCKET_NAME")
+        object_key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
+        if object_key.startswith('changed-'):
+            return {'statusCode': 200, 'body': 'Already processed'}
+        new_object_key = 'changed-' + object_key
+        s3.copy_object(Bucket=bucket_name, CopySource={'Bucket': bucket_name, 'Key': object_key}, Key=new_object_key)
+        s3.delete_object(Bucket=bucket_name, Key=object_key)
+        return {'statusCode': 200, 'body': 'OK'}
+    except Exception as e:
+        print(str(e))
+        return {'statusCode': 500, 'body': 'Error'}
+"""
 zip_buffer = io.BytesIO()
 with zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED) as zip_file:
     zip_file.writestr('index.py', lambda_code)
 zip_buffer.seek(0)
+zip_data = zip_buffer.read()
 
-func_resp = awslambda.create_function(
-    FunctionName='image-rename-function',
-    Runtime='python3.12',
-    Role=role_arn,
-    Handler='index.handler',
-    Code={'ZipFile': zip_buffer.read()},
-    Environment={'Variables': {'BUCKET_NAME': bucket_name}}
-)
+try:
+    func_resp = awslambda.create_function(
+        FunctionName='image-rename-function',
+        Runtime='python3.12',
+        Role=role_arn,
+        Handler='index.handler',
+        Code={'ZipFile': zip_data},
+        Environment={'Variables': {'BUCKET_NAME': bucket_name}}
+    )
+    func_arn = func_resp['FunctionArn']
+except awslambda.exceptions.ResourceConflictException:
+    awslambda.update_function_code(FunctionName='image-rename-function', ZipFile=zip_data)
+    awslambda.update_function_configuration(
+        FunctionName='image-rename-function',
+        Role=role_arn,
+        Environment={'Variables': {'BUCKET_NAME': bucket_name}}
+    )
+    func_info = awslambda.get_function(FunctionName='image-rename-function')
+    func_arn = func_info['Configuration']['FunctionArn']
 
-# 4. Add Lambda Permission for S3
-awslambda.add_permission(
-    FunctionName='image-rename-function',
-    StatementId='s3-invoke-permission',
-    Action='lambda:InvokeFunction',
-    Principal='s3.amazonaws.com',
-    SourceArn=f'arn:aws:s3:::{bucket_name}'
-)
+# 4. Add Lambda Permission for S3 (Idempotent)
+try:
+    awslambda.add_permission(
+        FunctionName='image-rename-function',
+        StatementId='s3-invoke-permission',
+        Action='lambda:InvokeFunction',
+        Principal='s3.amazonaws.com',
+        SourceArn=f'arn:aws:s3:::{bucket_name}'
+    )
+except Exception:
+    pass
 
 # 5. Add S3 Bucket Notification
 s3.put_bucket_notification_configuration(
@@ -122,7 +155,7 @@ s3.put_bucket_notification_configuration(
     NotificationConfiguration={
         'LambdaFunctionConfigurations': [
             {
-                'LambdaFunctionArn': func_resp['FunctionArn'],
+                'LambdaFunctionArn': func_arn,
                 'Events': ['s3:ObjectCreated:*']
             }
         ]

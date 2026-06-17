@@ -1,0 +1,24 @@
+{
+  "StackName": "stack-sqs-trigger-function",
+  "StackStatus": "CREATE_COMPLETE",
+  "CreationTime": "2026-06-17T01:52:32Z",
+  "Template": "",
+  "PythonScript": "# DIAGRAM_METADATA:\n# {\n#   \"resources\": {\n#     \"MyQueue\": \"AWS::SQS::Queue\",\n#     \"LambdaExecutionRole\": \"AWS::IAM::Role\",\n#     \"MyQueueFunction\": \"AWS::Lambda::Function\"\n#   },\n#   \"references\": [\n#     {\"source\": \"MyQueueFunction\", \"target\": \"MyQueue\", \"label\": \"event-source\"},\n#     {\"source\": \"MyQueueFunction\", \"target\": \"LambdaExecutionRole\", \"label\": \"role\"}\n#   ]\n# }\n\nimport json\nimport boto3\nimport zipfile\nimport io\n\nsqs = boto3.client('sqs', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')\niam = boto3.client('iam', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')\nawslambda = boto3.client('lambda', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')\n\nqueue_name = 'order-processing-queue'\ntry:\n    q_resp = sqs.create_queue(QueueName=queue_name)\n    q_url = q_resp['QueueUrl']\nexcept Exception:\n    q_url = sqs.get_queue_url(QueueName=queue_name)['QueueUrl']\n\nq_attributes = sqs.get_queue_attributes(QueueUrl=q_url, AttributeNames=['QueueArn'])\nq_arn = q_attributes['Attributes']['QueueArn']\n\nrole_name = 'sqs-lambda-role'\nassume_role_policy = {\n    \"Version\": \"2012-10-17\",\n    \"Statement\": [{\"Effect\": \"Allow\", \"Principal\": {\"Service\": \"lambda.amazonaws.com\"}, \"Action\": \"sts:AssumeRole\"}]\n}\ntry:\n    role_resp = iam.create_role(RoleName=role_name, AssumeRolePolicyDocument=json.dumps(assume_role_policy))\n    role_arn = role_resp['Role']['Arn']\nexcept Exception:\n    role_resp = iam.get_role(RoleName=role_name)\n    role_arn = role_resp['Role']['Arn']\n\nlambda_code = \"\"\"\nimport json\n\ndef handler(event, context):\n    if 'Records' not in event:\n        return {'statusCode': 200, 'body': 'No SQS records'}\n    for record in event['Records']:\n        print(\"Processing message:\", record['body'])\n    return {'statusCode': 200, 'body': 'OK'}\n\"\"\"\nzip_buffer = io.BytesIO()\nwith zipfile.ZipFile(zip_buffer, 'a', zipfile.ZIP_DEFLATED) as zip_file:\n    zip_file.writestr('index.py', lambda_code)\nzip_buffer.seek(0)\nzip_data = zip_buffer.read()\n\ntry:\n    func_resp = awslambda.create_function(\n        FunctionName='sqs-trigger-function',\n        Runtime='python3.12',\n        Role=role_arn,\n        Handler='index.handler',\n        Code={'ZipFile': zip_data}\n    )\n    func_arn = func_resp['FunctionArn']\nexcept Exception:\n    awslambda.update_function_code(FunctionName='sqs-trigger-function', ZipFile=zip_data)\n    func_info = awslambda.get_function(FunctionName='sqs-trigger-function')\n    func_arn = func_info['Configuration']['FunctionArn']\n\ntry:\n    awslambda.create_event_source_mapping(\n        EventSourceArn=q_arn,\n        FunctionName=func_arn,\n        Enabled=True\n    )\nexcept Exception:\n    pass\n\nstate = {\n    \"resources\": [\n        {\"LogicalResourceId\": \"MyQueue\", \"PhysicalResourceId\": q_url, \"ResourceType\": \"AWS::SQS::Queue\"},\n        {\"LogicalResourceId\": \"LambdaExecutionRole\", \"PhysicalResourceId\": role_name, \"ResourceType\": \"AWS::IAM::Role\"},\n        {\"LogicalResourceId\": \"MyQueueFunction\", \"PhysicalResourceId\": \"sqs-trigger-function\", \"ResourceType\": \"AWS::Lambda::Function\"}\n    ]\n}\nprint(json.dumps(state))\n",
+  "Resources": [
+    {
+      "LogicalResourceId": "MyQueue",
+      "PhysicalResourceId": "http://localhost:4566/000000000000/order-processing-queue",
+      "ResourceType": "AWS::SQS::Queue"
+    },
+    {
+      "LogicalResourceId": "LambdaExecutionRole",
+      "PhysicalResourceId": "sqs-lambda-role",
+      "ResourceType": "AWS::IAM::Role"
+    },
+    {
+      "LogicalResourceId": "MyQueueFunction",
+      "PhysicalResourceId": "sqs-trigger-function",
+      "ResourceType": "AWS::Lambda::Function"
+    }
+  ]
+}
