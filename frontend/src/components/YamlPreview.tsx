@@ -7,19 +7,15 @@ interface Props {
   onPreviewChanges: (stackName: string, changesetName: string, changes: import("../lib/types").ChangeSetChange[]) => void;
 }
 
-// Derive a stack name from the YAML description or resource names
-function deriveStackName(yaml: string): string {
-  // Try BucketName
-  const bucket = yaml.match(/BucketName:\s*['"']?([a-z0-9-]+)['"']?/i);
+// Derive a stack name from the Python script description or variable assignments
+function deriveStackName(script: string): string {
+  const bucket = script.match(/(?:bucket_name|Bucket)\s*=\s*['"]([a-z0-9-]+)['"]/i);
   if (bucket) return `stack-${bucket[1]}`;
-  // Try FunctionName
-  const fn = yaml.match(/FunctionName:\s*['"']?([a-z0-9-]+)['"']?/i);
+  const fn = script.match(/(?:FunctionName|function_name)\s*=\s*['"]([a-z0-9-]+)['"]/i);
   if (fn) return `stack-${fn[1]}`;
-  // Try TableName
-  const table = yaml.match(/TableName:\s*['"']?([a-z0-9-]+)['"']?/i);
+  const table = script.match(/(?:TableName|table_name)\s*=\s*['"]([a-z0-9-]+)['"]/i);
   if (table) return `stack-${table[1]}`;
-  // Try QueueName
-  const queue = yaml.match(/QueueName:\s*['"']?([a-z0-9-]+)['"']?/i);
+  const queue = script.match(/(?:QueueName|queue_name)\s*=\s*['"]([a-z0-9-]+)['"]/i);
   if (queue) return `stack-${queue[1]}`;
   return `stack-${Date.now()}`;
 }
@@ -41,8 +37,8 @@ export function YamlPreview({ yaml, onChange, onPreviewChanges }: Props) {
   return (
     <div className="yaml-card">
       <div className="yaml-card-header">
-        <h2 className="yaml-title">Generated CloudFormation Template</h2>
-        <span className="badge badge-blue">YAML</span>
+        <h2 className="yaml-title">Generated Python Script</h2>
+        <span className="badge">PYTHON</span>
       </div>
       <textarea
         className="yaml-pre"

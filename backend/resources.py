@@ -56,24 +56,24 @@ def _client(service: str):
 
 def _resolve(stack_name: str, logical_id: str) -> dict:
     """
-    Look up a resource by logical ID in the given CloudFormation stack and
+    Look up a resource by logical ID in the given stack's state file and
     return the full resource dict (includes PhysicalResourceId, ResourceType).
     Raises 404 if either the stack or the resource is not found.
     """
-    cfn = _client("cloudformation")
+    from state_manager import load_stack_state
     try:
-        resp = cfn.describe_stack_resources(StackName=stack_name)
+        state = load_stack_state(stack_name)
     except Exception as exc:
         raise HTTPException(
             status_code=404,
-            detail=f"Stack '{stack_name}' not found: {exc}",
+            detail=f"Stack '{stack_name}' not found in state: {exc}",
         )
-    for r in resp.get("StackResources", []):
+    for r in state.get("Resources", []):
         if r["LogicalResourceId"] == logical_id:
             return r
     raise HTTPException(
         status_code=404,
-        detail=f"Resource '{logical_id}' not found in stack '{stack_name}'.",
+        detail=f"Resource '{logical_id}' not found in stack state.",
     )
 
 
@@ -408,7 +408,7 @@ def _manage_local_container(logical_id: str, action: str, stack_name: str = None
         print(f"[Docker Sync] Client initialization failed: {e}")
         return
         
-    container_name = f"stackmind-ec2-{logical_id.lower()}"
+    container_name = f"AWS_AI_Resources_Provisioner-ec2-{logical_id.lower()}"
     
     # Identify the network this backend container is on
     network_name = None
@@ -534,7 +534,7 @@ def _manage_local_container(logical_id: str, action: str, stack_name: str = None
                             desc_resp = rds_client.describe_db_instances(DBInstanceIdentifier=db_phys)
                             db_name = desc_resp["DBInstances"][0].get("DBName", "mydb")
                             db_arn = f"arn:aws:rds:us-east-1:000000000000:db:{db_phys}"
-                            secret_name = f"stackmind-rds-secret-{db_phys.lower()}"
+                            secret_name = f"AWS_AI_Resources_Provisioner-rds-secret-{db_phys.lower()}"
                             
                             show_resp = rds_data.execute_statement(
                                 resourceArn=db_arn,
@@ -663,7 +663,7 @@ def get_ec2_info(stack_name: str, logical_id: str):
     # Fetch dynamic host port mapping
     host_port = None
     try:
-        container_name = f"stackmind-ec2-{logical_id.lower()}"
+        container_name = f"AWS_AI_Resources_Provisioner-ec2-{logical_id.lower()}"
         client = docker.from_env()
         container = client.containers.get(container_name)
         port_bindings = container.attrs.get("NetworkSettings", {}).get("Ports", {})
@@ -801,7 +801,7 @@ def _ensure_rds_container(stack_name: str, logical_id: str, db_instance_id: str)
         # Deploy secret to SecretsManager for rds-data to consume
         try:
             secrets_client = _client("secretsmanager")
-            secret_name = f"stackmind-rds-secret-{db_instance_id.lower()}"
+            secret_name = f"AWS_AI_Resources_Provisioner-rds-secret-{db_instance_id.lower()}"
             try:
                 secrets_client.create_secret(
                     Name=secret_name,
@@ -926,7 +926,7 @@ def run_rds_query(stack_name: str, logical_id: str, req: RdsQueryRequest):
         raise HTTPException(status_code=502, detail=str(exc))
         
     rds_data = _client("rds-data")
-    secret_name = f"stackmind-rds-secret-{db_instance_id.lower()}"
+    secret_name = f"AWS_AI_Resources_Provisioner-rds-secret-{db_instance_id.lower()}"
     try:
         resp_stmt = rds_data.execute_statement(
             resourceArn=db_arn,

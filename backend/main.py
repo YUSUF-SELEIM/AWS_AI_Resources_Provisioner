@@ -3,6 +3,7 @@ import re
 import time
 import yaml
 import boto3
+import json
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,7 @@ from resources import router as resources_router
 # App setup
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Stackmind API", version="0.3.0")
+app = FastAPI(title="AWS_AI_Resources_Provisioner API", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,9 +28,6 @@ app.add_middleware(
 
 app.include_router(resources_router)
 
-# ---------------------------------------------------------------------------
-# AWS / MiniStack client
-# ---------------------------------------------------------------------------
 
 MINISTACK_ENDPOINT = os.getenv("MINISTACK_ENDPOINT", "http://localhost:4566")
 
@@ -42,11 +40,6 @@ def get_cfn_client():
         aws_secret_access_key="test",
         region_name="us-east-1",
     )
-
-# ---------------------------------------------------------------------------
-# Request / Response models
-# ---------------------------------------------------------------------------
-
 class GenerateRequest(BaseModel):
     prompt: str
 
@@ -92,7 +85,6 @@ class ChangeSetResponse(BaseModel):
 class ExecuteChangeSetResponse(BaseModel):
     ok: bool
 
-# --- Diagram models ---
 
 class DiagramRequest(BaseModel):
     template: str
@@ -111,9 +103,7 @@ class DiagramResponse(BaseModel):
     nodes: list[DiagramNode]
     edges: list[DiagramEdge]
 
-# ---------------------------------------------------------------------------
 # YAML helpers — CloudFormation-aware loader
-# ---------------------------------------------------------------------------
 
 def _cfn_constructor(loader, tag_suffix, node):
     """Convert CF short-form tags (!Ref, !GetAtt, etc.) to long-form dicts."""
@@ -145,85 +135,53 @@ def parse_cfn_yaml(template: str) -> dict:
         )
     return parsed
 
+import ast
+import json
 
-def validate_yaml(template: str) -> None:
-    """Parse YAML and raise HTTPException 400 on syntax or structure errors."""
-    parsed = parse_cfn_yaml(template)
-    if not isinstance(parsed, dict) or "Resources" not in parsed:
+def validate_python(code: str) -> None:
+    """Parse Python code and raise HTTPException 400 on syntax errors."""
+    try:
+        ast.parse(code)
+    except SyntaxError as e:
         raise HTTPException(
             status_code=400,
-            detail="Generated template is missing a 'Resources' section.",
+            detail=f"Generated script has invalid python syntax: {str(e)}",
         )
 
-# ---------------------------------------------------------------------------
-# Diagram helpers
-# ---------------------------------------------------------------------------
-
-def _collect_refs(obj, logical_ids: set) -> list:
-    """Recursively find all logical-ID references inside a property value."""
-    found: list = []
-    if isinstance(obj, dict):
-        if "Ref" in obj and obj["Ref"] in logical_ids:
-            found.append(obj["Ref"])
-        elif "Fn::GetAtt" in obj:
-            val = obj["Fn::GetAtt"]
-            target = val[0] if isinstance(val, list) else str(val).split(".")[0]
-            if target in logical_ids:
-                found.append(target)
-        elif "Fn::Sub" in obj:
-            sub_val = obj["Fn::Sub"]
-            if isinstance(sub_val, str):
-                for m in re.findall(r"\$\{([^}]+)\}", sub_val):
-                    base = m.split(".")[0]
-                    if base in logical_ids:
-                        found.append(base)
-        for v in obj.values():
-            found.extend(_collect_refs(v, logical_ids))
-    elif isinstance(obj, list):
-        for item in obj:
-            found.extend(_collect_refs(item, logical_ids))
-    return found
-
-
 def build_diagram(template: str) -> DiagramResponse:
-    parsed = parse_cfn_yaml(template)
-    resources: dict = parsed.get("Resources", {})
-    logical_ids = set(resources.keys())
-
+    """Parse the commented DIAGRAM_METADATA JSON block from Python script and return a node/edge graph."""
     nodes: list[DiagramNode] = []
     edges: list[DiagramEdge] = []
-    seen_edges: set = set()
-
-    for logical_id, resource_def in resources.items():
-        res_type = resource_def.get("Type", "Unknown")
-        nodes.append(DiagramNode(id=logical_id, type=res_type, label=logical_id))
-
-    for logical_id, resource_def in resources.items():
-        props = resource_def.get("Properties", {}) or {}
-        refs = _collect_refs(props, logical_ids)
-        for target in refs:
-            if target != logical_id:
-                key = (logical_id, target)
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    edges.append(DiagramEdge(source=logical_id, target=target, label="ref"))
-
-        # DependsOn edges
-        depends_on = resource_def.get("DependsOn", [])
-        if isinstance(depends_on, str):
-            depends_on = [depends_on]
-        for dep in depends_on:
-            if dep in logical_ids:
-                key = (logical_id, dep)
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    edges.append(DiagramEdge(source=logical_id, target=dep, label="DependsOn"))
-
+    
+    # Extract commented JSON lines starting with "# DIAGRAM_METADATA:"
+    metadata_lines = []
+    recording = False
+    for line in template.splitlines():
+        line_strip = line.strip()
+        if "DIAGRAM_METADATA:" in line_strip:
+            recording = True
+            continue
+        if recording:
+            if line_strip.startswith("#"):
+                metadata_lines.append(line_strip.lstrip("#").strip())
+            else:
+                break
+                
+    if metadata_lines:
+        try:
+            metadata = json.loads("".join(metadata_lines))
+            resources = metadata.get("resources", {})
+            for logical_id, res_type in resources.items():
+                nodes.append(DiagramNode(id=logical_id, type=res_type, label=logical_id))
+            for ref in metadata.get("references", []):
+                edges.append(DiagramEdge(source=ref["source"], target=ref["target"], label=ref.get("label", "ref")))
+        except Exception as e:
+            # Fallback if parsing fails
+            print("Failed to parse diagram metadata:", e)
+            
     return DiagramResponse(nodes=nodes, edges=edges)
 
-# ---------------------------------------------------------------------------
 # Misc helpers
-# ---------------------------------------------------------------------------
 
 def fetch_failed_events(cfn, stack_name: str) -> list[dict]:
     """Return failed resource events for a stack to surface root-cause errors."""
@@ -244,9 +202,7 @@ def fetch_failed_events(cfn, stack_name: str) -> list[dict]:
     except Exception:
         return []
 
-# ---------------------------------------------------------------------------
-# EC2 Custom Resource Workaround
-# ---------------------------------------------------------------------------
+# EC2 Custom Resource Workaround because it is not supported in MiniStack CloudFormation
 
 LAMBDA_CODE = """
 import boto3
@@ -438,19 +394,19 @@ def inject_ec2_workaround(template_str: str) -> str:
             resource["Type"] = custom_type
             if "Properties" not in resource:
                 resource["Properties"] = {}
-            resource["Properties"]["ServiceToken"] = {"Fn::GetAtt": ["StackMindEC2Provider", "Arn"]}
+            resource["Properties"]["ServiceToken"] = {"Fn::GetAtt": ["AWS_AI_Resources_ProvisionerEC2Provider", "Arn"]}
         elif res_type in ("AWS::S3::BucketObject", "AWS::S3::Object"):
             has_custom = True
             resource["Type"] = "Custom::MiniStackS3Object"
             if "Properties" not in resource:
                 resource["Properties"] = {}
-            resource["Properties"]["ServiceToken"] = {"Fn::GetAtt": ["StackMindEC2Provider", "Arn"]}
+            resource["Properties"]["ServiceToken"] = {"Fn::GetAtt": ["AWS_AI_Resources_ProvisionerEC2Provider", "Arn"]}
 
     if not has_custom:
         return template_str
 
     # Inject the provider Lambda and Role
-    parsed["Resources"]["StackMindEC2ProviderRole"] = {
+    parsed["Resources"]["AWS_AI_Resources_ProvisionerEC2ProviderRole"] = {
         "Type": "AWS::IAM::Role",
         "Properties": {
             "AssumeRolePolicyDocument": {
@@ -468,11 +424,11 @@ def inject_ec2_workaround(template_str: str) -> str:
         }
     }
     
-    parsed["Resources"]["StackMindEC2Provider"] = {
+    parsed["Resources"]["AWS_AI_Resources_ProvisionerEC2Provider"] = {
         "Type": "AWS::Lambda::Function",
         "Properties": {
             "Handler": "index.handler",
-            "Role": {"Fn::GetAtt": ["StackMindEC2ProviderRole", "Arn"]},
+            "Role": {"Fn::GetAtt": ["AWS_AI_Resources_ProvisionerEC2ProviderRole", "Arn"]},
             "Runtime": "python3.12",
             "Timeout": 60,
             "Code": {"ZipFile": LAMBDA_CODE}
@@ -487,13 +443,11 @@ def inject_ec2_workaround(template_str: str) -> str:
 
 
 
-# ---------------------------------------------------------------------------
 # Endpoints
-# ---------------------------------------------------------------------------
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(req: GenerateRequest):
-    """Generate a CloudFormation template from a natural-language prompt."""
+    """Generate a Python provisioning script from a natural-language prompt."""
     if not req.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
     try:
@@ -501,95 +455,144 @@ async def generate(req: GenerateRequest):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Groq error: {exc}")
 
-    validate_yaml(template)
+    validate_python(template)
     return GenerateResponse(template=template)
 
 
 @app.post("/deploy", response_model=DeployResponse)
 async def deploy(req: DeployRequest):
-    """Deploy a CloudFormation template to MiniStack (direct create_stack)."""
+    """Deploy resources by running a Python script directly on MiniStack."""
     if not req.stack_name.strip() or not req.template.strip():
         raise HTTPException(status_code=400, detail="stack_name and template are required.")
 
-    validate_yaml(req.template)
-    final_template = inject_ec2_workaround(req.template)
+    validate_python(req.template)
 
-    cfn = get_cfn_client()
+    import subprocess
+    import tempfile
+    import sys
+    
+    # Save script to a temporary file
+    with tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w", encoding="utf-8") as f:
+        f.write(req.template)
+        temp_script_path = f.name
+        
     try:
-        resp = cfn.create_stack(
-            StackName=req.stack_name,
-            TemplateBody=final_template,
-            Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"],
+        # Run the script and capture output
+        res = subprocess.run(
+            [sys.executable, temp_script_path],
+            capture_output=True,
+            text=True,
+            timeout=60
         )
-    except cfn.exceptions.AlreadyExistsException:
-        raise HTTPException(status_code=409, detail=f"Stack '{req.stack_name}' already exists.")
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"MiniStack error: {exc}")
+        # Clean up temp file
+        os.remove(temp_script_path)
+        
+        if res.returncode != 0:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Execution error:\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
+            )
+            
+        print("Script STDOUT:", res.stdout)
+        print("Script STDERR:", res.stderr)
+            
+        # Parse the JSON at the end of the script
+        lines = res.stdout.strip().split("\n") if res.stdout else []
+        state_data = None
+        for line in reversed(lines):
+            try:
+                state_data = json.loads(line)
+                if "resources" in state_data:
+                    break
+            except Exception:
+                continue
+                
+        resources = []
+        if state_data and "resources" in state_data:
+            resources = state_data["resources"]
+        else:
+            # Fallback: Parse DIAGRAM_METADATA and code to extract resources
+            print("No state JSON printed. Falling back to code analysis.")
+            diagram = build_diagram(req.template)
+            for node in diagram.nodes:
+                logical_id = node.id
+                res_type = node.type
+                
+                physical_id = logical_id
+                if res_type == "AWS::S3::Bucket":
+                    match = re.search(r"(?:bucket_name|BucketName)\s*=\s*['\"]([^'\"]+)['\"]", req.template)
+                    physical_id = match.group(1) if match else logical_id.lower()
+                elif res_type == "AWS::Lambda::Function":
+                    match = re.search(r"(?:FunctionName|function_name)\s*=\s*['\"]([^'\"]+)['\"]", req.template)
+                    physical_id = match.group(1) if match else logical_id
+                elif res_type == "AWS::DynamoDB::Table":
+                    match = re.search(r"(?:TableName|table_name)\s*=\s*['\"]([^'\"]+)['\"]", req.template)
+                    physical_id = match.group(1) if match else logical_id
+                elif res_type == "AWS::SQS::Queue":
+                    match = re.search(r"(?:QueueName|queue_name)\s*=\s*['\"]([^'\"]+)['\"]", req.template)
+                    q_name = match.group(1) if match else logical_id.lower()
+                    physical_id = f"http://localhost:4566/000000000000/{q_name}"
+                elif res_type == "AWS::IAM::Role":
+                    match = re.search(r"(?:RoleName|role_name)\s*=\s*['\"]([^'\"]+)['\"]", req.template)
+                    physical_id = match.group(1) if match else logical_id
 
-    return DeployResponse(stack_name=req.stack_name, stack_id=resp["StackId"])
+                resources.append({
+                    "LogicalResourceId": logical_id,
+                    "PhysicalResourceId": physical_id,
+                    "ResourceType": res_type
+                })
+            
+            if not resources:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Script execution completed but did not output resource state. Output:\n{res.stdout}"
+                )
+            
+        # Save state locally
+        from state_manager import save_stack_state
+        save_stack_state(
+            stack_name=req.stack_name,
+            resources=resources,
+            template="",
+            python_script=req.template
+        )
+        
+    except subprocess.TimeoutExpired:
+        if os.path.exists(temp_script_path):
+            os.remove(temp_script_path)
+        raise HTTPException(status_code=504, detail="Script execution timed out after 60s.")
+    except Exception as e:
+        if os.path.exists(temp_script_path):
+            os.remove(temp_script_path)
+        raise HTTPException(status_code=500, detail=f"Failed to execute provisioning script: {str(e)}")
+
+    return DeployResponse(stack_name=req.stack_name, stack_id=req.stack_name)
 
 
 @app.post("/stacks/{stack_name}/changeset", response_model=ChangeSetResponse)
 async def create_changeset(stack_name: str, req: ChangeSetRequest):
-    """Create a change set (CREATE type for new stacks, UPDATE for existing)."""
-    validate_yaml(req.template)
-    final_template = inject_ec2_workaround(req.template)
+    """Create a mock change set for direct Python provisioning."""
+    validate_python(req.template)
 
-    cfn = get_cfn_client()
+    diagram_data = build_diagram(req.template)
+    changes: list[ChangeSetChange] = []
+    for node in diagram_data.nodes:
+        changes.append(ChangeSetChange(
+            action="Add",
+            resource_type=node.type,
+            logical_id=node.id,
+            replacement=False
+        ))
 
-    # Detect if stack already exists to pick changeset type
-    changeset_type = "CREATE"
-    try:
-        cfn.describe_stacks(StackName=stack_name)
-        changeset_type = "UPDATE"
-    except Exception as exc:
-        if "does not exist" not in str(exc):
-            raise HTTPException(status_code=502, detail=f"MiniStack error: {exc}")
+    # Save the changeset python script temporarily
+    from state_manager import ensure_stacks_dir, get_state_path
+    ensure_stacks_dir()
+    safe_name = "".join(c for c in stack_name if c.isalnum() or c in ("-", "_"))
+    changeset_path = os.path.join(os.path.dirname(get_state_path(stack_name)), f"{safe_name}.changeset")
+    with open(changeset_path, "w", encoding="utf-8") as f:
+        f.write(req.template)
 
     changeset_name = f"cs-{int(time.time())}"
-
-    try:
-        cfn.create_change_set(
-            StackName=stack_name,
-            TemplateBody=final_template,
-            ChangeSetName=changeset_name,
-            ChangeSetType=changeset_type,
-            Capabilities=["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"],
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"MiniStack error creating change set: {exc}",
-        )
-
-    # Poll until change set is ready (up to 15 attempts × 1 s)
-    changes: list[ChangeSetChange] = []
-    for _ in range(15):
-        time.sleep(1)
-        try:
-            cs_resp = cfn.describe_change_set(
-                ChangeSetName=changeset_name,
-                StackName=stack_name,
-            )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"MiniStack error describing change set: {exc}",
-            )
-
-        cs_status = cs_resp.get("Status", "")
-        if cs_status in ("CREATE_COMPLETE", "FAILED", "DELETE_COMPLETE"):
-            for c in cs_resp.get("Changes", []):
-                rc = c.get("ResourceChange", {})
-                replacement_val = rc.get("Replacement", "False")
-                changes.append(ChangeSetChange(
-                    action=rc.get("Action", "Add"),
-                    resource_type=rc.get("ResourceType", ""),
-                    logical_id=rc.get("LogicalResourceId", ""),
-                    replacement=(replacement_val == "True"),
-                ))
-            break
-
     return ChangeSetResponse(changeset_name=changeset_name, changes=changes)
 
 
@@ -598,75 +601,246 @@ async def create_changeset(stack_name: str, req: ChangeSetRequest):
     response_model=ExecuteChangeSetResponse,
 )
 async def execute_changeset(stack_name: str, changeset_name: str):
-    """Execute a previously created change set."""
-    cfn = get_cfn_client()
+    """Execute a previously created Python change set."""
+    from state_manager import get_state_path, save_stack_state
+    safe_name = "".join(c for c in stack_name if c.isalnum() or c in ("-", "_"))
+    changeset_path = os.path.join(os.path.dirname(get_state_path(stack_name)), f"{safe_name}.changeset")
+
+    if not os.path.exists(changeset_path):
+        raise HTTPException(status_code=404, detail="Changeset template not found.")
+
+    with open(changeset_path, "r", encoding="utf-8") as f:
+        script_code = f.read()
+
+    import subprocess
+    import tempfile
+    import sys
+
+    # Save script to a temporary file
+    with tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w", encoding="utf-8") as f:
+        f.write(script_code)
+        temp_script_path = f.name
+
     try:
-        cfn.execute_change_set(
-            ChangeSetName=changeset_name,
-            StackName=stack_name,
+        # Run the script and capture output
+        res = subprocess.run(
+            [sys.executable, temp_script_path],
+            capture_output=True,
+            text=True,
+            timeout=60
         )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"MiniStack error executing change set: {exc}",
+        # Clean up temp file
+        os.remove(temp_script_path)
+        os.remove(changeset_path)
+
+        if res.returncode != 0:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Execution error:\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
+            )
+
+        print("Script STDOUT:", res.stdout)
+        print("Script STDERR:", res.stderr)
+
+        # Parse the JSON at the end of the script
+        lines = res.stdout.strip().split("\n") if res.stdout else []
+        state_data = None
+        for line in reversed(lines):
+            try:
+                state_data = json.loads(line)
+                if "resources" in state_data:
+                    break
+            except Exception:
+                continue
+
+        resources = []
+        if state_data and "resources" in state_data:
+            resources = state_data["resources"]
+        else:
+            # Fallback: Parse DIAGRAM_METADATA and code to extract resources
+            print("No state JSON printed in changeset. Falling back to code analysis.")
+            diagram = build_diagram(script_code)
+            for node in diagram.nodes:
+                logical_id = node.id
+                res_type = node.type
+
+                physical_id = logical_id
+                if res_type == "AWS::S3::Bucket":
+                    match = re.search(r"(?:bucket_name|BucketName)\s*=\s*['\"]([^'\"]+)['\"]", script_code)
+                    physical_id = match.group(1) if match else logical_id.lower()
+                elif res_type == "AWS::Lambda::Function":
+                    match = re.search(r"(?:FunctionName|function_name)\s*=\s*['\"]([^'\"]+)['\"]", script_code)
+                    physical_id = match.group(1) if match else logical_id
+                elif res_type == "AWS::DynamoDB::Table":
+                    match = re.search(r"(?:TableName|table_name)\s*=\s*['\"]([^'\"]+)['\"]", script_code)
+                    physical_id = match.group(1) if match else logical_id
+                elif res_type == "AWS::SQS::Queue":
+                    match = re.search(r"(?:QueueName|queue_name)\s*=\s*['\"]([^'\"]+)['\"]", script_code)
+                    q_name = match.group(1) if match else logical_id.lower()
+                    physical_id = f"http://localhost:4566/000000000000/{q_name}"
+                elif res_type == "AWS::IAM::Role":
+                    match = re.search(r"(?:RoleName|role_name)\s*=\s*['\"]([^'\"]+)['\"]", script_code)
+                    physical_id = match.group(1) if match else logical_id
+
+                resources.append({
+                    "LogicalResourceId": logical_id,
+                    "PhysicalResourceId": physical_id,
+                    "ResourceType": res_type
+                })
+
+            if not resources:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Script execution completed but did not output resource state. Output:\n{res.stdout}"
+                )
+
+        # Save state locally
+        save_stack_state(
+            stack_name=stack_name,
+            resources=resources,
+            template="",
+            python_script=script_code
         )
+
+    except subprocess.TimeoutExpired:
+        if os.path.exists(temp_script_path):
+            os.remove(temp_script_path)
+        raise HTTPException(status_code=504, detail="Script execution timed out after 60s.")
+    except Exception as e:
+        if os.path.exists(temp_script_path):
+            os.remove(temp_script_path)
+        raise HTTPException(status_code=500, detail=f"Failed to execute provisioning script: {str(e)}")
+
     return ExecuteChangeSetResponse(ok=True)
 
 
 @app.get("/stacks/{stack_name}", response_model=StackStatusResponse)
 async def get_stack_status(stack_name: str):
     """Poll the status of a deployed stack."""
-    cfn = get_cfn_client()
+    from state_manager import load_stack_state
     try:
-        resp = cfn.describe_stacks(StackName=stack_name)
-        stack = resp["Stacks"][0]
+        state = load_stack_state(stack_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Stack '{stack_name}' not found.")
     except Exception as exc:
-        if "does not exist" in str(exc):
-            raise HTTPException(status_code=404, detail=f"Stack '{stack_name}' not found.")
-        raise HTTPException(status_code=502, detail=f"MiniStack error: {exc}")
+        raise HTTPException(status_code=502, detail=f"Error reading stack state: {exc}")
 
-    status = stack["StackStatus"]
-    failed_events = None
-    if "FAILED" in status or status in ("ROLLBACK_COMPLETE", "ROLLBACK_IN_PROGRESS"):
-        failed_events = fetch_failed_events(cfn, stack_name)
-
-    outputs = stack.get("Outputs", [])
     return StackStatusResponse(
-        stack_name=stack["StackName"],
-        status=status,
-        reason=stack.get("StackStatusReason"),
-        outputs=[{"key": o["OutputKey"], "value": o["OutputValue"]} for o in outputs],
-        failed_events=failed_events,
+        stack_name=state["StackName"],
+        status=state.get("StackStatus", "CREATE_COMPLETE"),
+        reason="Direct API Provisioned",
+        outputs=[],
+        failed_events=None,
     )
 
 
 @app.get("/stacks/{stack_name}/resources", response_model=list[StackResource])
 async def get_stack_resources(stack_name: str):
     """List all resources in a deployed stack."""
-    cfn = get_cfn_client()
+    from state_manager import load_stack_state
     try:
-        resp = cfn.describe_stack_resources(StackName=stack_name)
+        state = load_stack_state(stack_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Stack '{stack_name}' not found.")
     except Exception as exc:
-        if "does not exist" in str(exc):
-            raise HTTPException(status_code=404, detail=f"Stack '{stack_name}' not found.")
-        raise HTTPException(status_code=502, detail=f"MiniStack error: {exc}")
+        raise HTTPException(status_code=502, detail=f"Error reading stack state: {exc}")
 
     return [
         StackResource(
             logical_id=r["LogicalResourceId"],
             resource_type=r["ResourceType"],
             physical_id=r.get("PhysicalResourceId"),
-            status=r["ResourceStatus"],
+            status="CREATE_COMPLETE",
         )
-        for r in resp.get("StackResources", [])
+        for r in state.get("Resources", [])
     ]
 
 
 @app.post("/diagram", response_model=DiagramResponse)
 async def diagram(req: DiagramRequest):
-    """Parse a CloudFormation YAML template and return a node/edge graph."""
-    validate_yaml(req.template)
+    """Parse a Python script and return a node/edge graph."""
+    validate_python(req.template)
     return build_diagram(req.template)
+
+
+@app.delete("/stacks/{stack_name}")
+async def delete_stack(stack_name: str):
+    """Delete a stack and tear down all its resources from MiniStack."""
+    from state_manager import load_stack_state, delete_stack_state
+    try:
+        state = load_stack_state(stack_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Stack '{stack_name}' not found.")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Error reading stack state: {exc}")
+
+    resources = state.get("Resources", [])
+    
+    # We delete in reverse order of creation to respect dependencies (e.g. Lambdas before Roles)
+    for r in reversed(resources):
+        res_type = r.get("ResourceType")
+        phys_id = r.get("PhysicalResourceId")
+        if not phys_id:
+            continue
+            
+        print(f"Tearing down resource {res_type}: {phys_id}")
+        try:
+            if res_type == "AWS::S3::Bucket":
+                s3 = boto3.client('s3', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+                # Empty bucket first
+                try:
+                    objects = s3.list_objects_v2(Bucket=phys_id)
+                    if 'Contents' in objects:
+                        for obj in objects['Contents']:
+                            s3.delete_object(Bucket=phys_id, Key=obj['Key'])
+                except Exception as e:
+                    print(f"Error emptying bucket {phys_id}: {e}")
+                s3.delete_bucket(Bucket=phys_id)
+                
+            elif res_type == "AWS::Lambda::Function":
+                awslambda = boto3.client('lambda', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+                awslambda.delete_function(FunctionName=phys_id)
+                
+            elif res_type == "AWS::IAM::Role":
+                iam = boto3.client('iam', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+                # Detach managed policies
+                try:
+                    attached = iam.list_attached_role_policies(RoleName=phys_id)
+                    for p in attached.get('AttachedPolicies', []):
+                        iam.detach_role_policy(RoleName=phys_id, PolicyArn=p['PolicyArn'])
+                except Exception:
+                    pass
+                # Delete inline policies
+                try:
+                    inline = iam.list_role_policies(RoleName=phys_id)
+                    for p_name in inline.get('PolicyNames', []):
+                        iam.delete_role_policy(RoleName=phys_id, PolicyName=p_name)
+                except Exception:
+                    pass
+                iam.delete_role(RoleName=phys_id)
+                
+            elif res_type == "AWS::DynamoDB::Table":
+                ddb = boto3.client('dynamodb', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+                ddb.delete_table(TableName=phys_id)
+                
+            elif res_type == "AWS::SQS::Queue":
+                sqs = boto3.client('sqs', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+                sqs.delete_queue(QueueUrl=phys_id)
+                
+            elif res_type == "AWS::EC2::Instance":
+                ec2 = boto3.client('ec2', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+                ec2.terminate_instances(InstanceIds=[phys_id])
+                
+            elif res_type == "AWS::EC2::SecurityGroup":
+                ec2 = boto3.client('ec2', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+                ec2.delete_security_group(GroupId=phys_id)
+        except Exception as e:
+            # Continue teardown even if one resource fails
+            print(f"Error tearing down {phys_id}: {e}")
+
+    # Remove the state file
+    delete_stack_state(stack_name)
+    return {"ok": True}
 
 
 @app.get("/health")

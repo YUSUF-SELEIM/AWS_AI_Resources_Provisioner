@@ -1,8 +1,8 @@
-# Stackmind
+# AWS_AI_Resources_Provisioner
 
 > Natural language → CloudFormation templates → Local AWS sandbox (MiniStack)
 
-Stackmind is an open-source tool that converts plain-English infrastructure descriptions into AWS CloudFormation templates using AI, then deploys them to a local AWS emulator for safe, cost-free testing.
+AWS_AI_Resources_Provisioner is an open-source tool that converts plain-English infrastructure descriptions into AWS CloudFormation templates using AI, then deploys them to a local AWS emulator for safe, cost-free testing.
 
 **Phase 1** supports S3 buckets. Later phases will add DynamoDB, SQS, Lambda, IAM, change set previews, and an architecture diagram view.
 
@@ -39,7 +39,7 @@ MiniStack / LocalStack (localhost:4566)
 ```bash
 # 1. Clone the repo
 git clone <repo-url>
-cd stackmind
+cd AWS_AI_Resources_Provisioner
 
 # 2. Add your Groq API key
 cp .env.example .env
@@ -77,7 +77,7 @@ open http://localhost:5173
 ## Project Structure
 
 ```
-stackmind/
+AWS_AI_Resources_Provisioner/
 ├── docker-compose.yml
 ├── .env.example
 ├── README.md

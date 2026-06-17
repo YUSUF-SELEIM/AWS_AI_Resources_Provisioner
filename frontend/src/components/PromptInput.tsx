@@ -26,9 +26,10 @@ export function PromptInput({ onTemplate }: Props) {
     handleGenerate(chip);
   };
 
-  const history: { timestamp: number; prompt: string; template: string }[] = JSON.parse(
-    localStorage.getItem("stackmind_history") || "[]"
-  );
+  const history: { timestamp: number; prompt: string; template: string }[] =
+    JSON.parse(
+      localStorage.getItem("AWS_AI_Resources_Provisioner_history") || "[]",
+    );
 
   return (
     <div className="prompt-input-card">
@@ -48,8 +49,24 @@ export function PromptInput({ onTemplate }: Props) {
       </div>
 
       {history.length > 0 && (
-        <div style={{ marginTop: "1rem", borderTop: "1px dashed var(--border)", paddingTop: "0.75rem" }}>
-          <label className="prompt-label" style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "0.5rem" }}>
+        <div
+          style={{
+            marginTop: "1rem",
+            borderTop: "1px dashed var(--border)",
+            paddingTop: "0.75rem",
+          }}
+        >
+          <label
+            className="prompt-label"
+            style={{
+              fontSize: "11px",
+              color: "var(--text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              display: "block",
+              marginBottom: "0.5rem",
+            }}
+          >
             Recent Templates (Load without API call)
           </label>
           <div className="prompt-chips">
@@ -57,12 +74,17 @@ export function PromptInput({ onTemplate }: Props) {
               <button
                 key={idx}
                 className="chip"
-                style={{ borderColor: "var(--border)", opacity: 0.85, fontSize: "12px" }}
+                style={{
+                  borderColor: "var(--border)",
+                  opacity: 0.85,
+                  fontSize: "12px",
+                }}
                 onClick={() => onTemplate(h.template, h.prompt)}
                 disabled={isPending}
                 type="button"
               >
-                {h.prompt.slice(0, 50)}{h.prompt.length > 50 ? "..." : ""}
+                {h.prompt.slice(0, 50)}
+                {h.prompt.length > 50 ? "..." : ""}
               </button>
             ))}
           </div>
@@ -94,15 +116,15 @@ export function PromptInput({ onTemplate }: Props) {
               <span className="spinner" /> Generating…
             </span>
           ) : (
-            "Generate Template"
+            "Generate Script"
           )}
         </button>
       </div>
       {error && (
         <div className="alert alert-error" role="alert">
           <strong>Generation failed:</strong>{" "}
-          {(error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-            error.message}
+          {(error as { response?: { data?: { detail?: string } } })?.response
+            ?.data?.detail ?? error.message}
         </div>
       )}
     </div>

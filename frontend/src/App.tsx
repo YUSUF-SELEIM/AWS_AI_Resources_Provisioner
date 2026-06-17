@@ -7,7 +7,11 @@ import { StackStatus } from "./components/StackStatus";
 import { ResourcePanel } from "./components/ResourcePanel";
 import { useDiagram } from "./hooks/useDiagram";
 import { useExecuteChangeset } from "./hooks/useExecuteChangeset";
-import type { ChangeSetChange, ChangeSetResponse, DiagramNode } from "./lib/types";
+import type {
+  ChangeSetChange,
+  ChangeSetResponse,
+  DiagramNode,
+} from "./lib/types";
 
 // ---------------------------------------------------------------------------
 // Stage machine types
@@ -55,23 +59,38 @@ function DiagramPanel({
 // App
 // ---------------------------------------------------------------------------
 export default function App() {
-  const [template, setTemplate] = useState<string | null>(() => localStorage.getItem("stackmind_template"));
-  const [stage, setStage] = useState<Stage>(() => (localStorage.getItem("stackmind_stage") as Stage) || "idle");
-  const [deployedStack, setDeployedStack] = useState<string | null>(() => localStorage.getItem("stackmind_deployed_stack"));
-  const [changesetState, setChangesetState] = useState<ChangesetState | null>(null);
+  const [template, setTemplate] = useState<string | null>(() =>
+    localStorage.getItem("AWS_AI_Resources_Provisioner_template"),
+  );
+  const [stage, setStage] = useState<Stage>(
+    () =>
+      (localStorage.getItem("AWS_AI_Resources_Provisioner_stage") as Stage) ||
+      "idle",
+  );
+  const [deployedStack, setDeployedStack] = useState<string | null>(() =>
+    localStorage.getItem("AWS_AI_Resources_Provisioner_deployed_stack"),
+  );
+  const [changesetState, setChangesetState] = useState<ChangesetState | null>(
+    null,
+  );
   const [selectedNode, setSelectedNode] = useState<DiagramNode | null>(null);
 
-  const { mutate: execChangeset, isPending: isDeploying, error: deployError } =
-    useExecuteChangeset();
+  const {
+    mutate: execChangeset,
+    isPending: isDeploying,
+    error: deployError,
+  } = useExecuteChangeset();
 
   // Step 1 → 2: new template generated / loaded from history
   const handleNewTemplate = (yaml: string, promptText?: string) => {
-    localStorage.setItem("stackmind_template", yaml);
-    localStorage.setItem("stackmind_stage", "generated");
-    localStorage.removeItem("stackmind_deployed_stack");
+    localStorage.setItem("AWS_AI_Resources_Provisioner_template", yaml);
+    localStorage.setItem("AWS_AI_Resources_Provisioner_stage", "generated");
+    localStorage.removeItem("AWS_AI_Resources_Provisioner_deployed_stack");
 
     // Save template to history
-    const history = JSON.parse(localStorage.getItem("stackmind_history") || "[]");
+    const history = JSON.parse(
+      localStorage.getItem("AWS_AI_Resources_Provisioner_history") || "[]",
+    );
     const exists = history.some((h: any) => h.template === yaml);
     if (!exists) {
       const newHistory = [
@@ -82,7 +101,10 @@ export default function App() {
         },
         ...history,
       ].slice(0, 10);
-      localStorage.setItem("stackmind_history", JSON.stringify(newHistory));
+      localStorage.setItem(
+        "AWS_AI_Resources_Provisioner_history",
+        JSON.stringify(newHistory),
+      );
     }
 
     setTemplate(yaml);
@@ -95,9 +117,12 @@ export default function App() {
   const handlePreviewChanges = (
     stackName: string,
     changesetName: string,
-    changes: ChangeSetChange[]
+    changes: ChangeSetChange[],
   ) => {
-    setChangesetState({ stackName, changeset: { changeset_name: changesetName, changes } });
+    setChangesetState({
+      stackName,
+      changeset: { changeset_name: changesetName, changes },
+    });
     setStage("changeset");
   };
 
@@ -111,20 +136,26 @@ export default function App() {
       },
       {
         onSuccess: () => {
-          localStorage.setItem("stackmind_deployed_stack", changesetState.stackName);
-          localStorage.setItem("stackmind_stage", "deployed");
+          localStorage.setItem(
+            "AWS_AI_Resources_Provisioner_deployed_stack",
+            changesetState.stackName,
+          );
+          localStorage.setItem(
+            "AWS_AI_Resources_Provisioner_stage",
+            "deployed",
+          );
           setDeployedStack(changesetState.stackName);
           setStage("deployed");
         },
-      }
+      },
     );
   };
 
   // Reset all active states
   const handleReset = () => {
-    localStorage.removeItem("stackmind_template");
-    localStorage.removeItem("stackmind_stage");
-    localStorage.removeItem("stackmind_deployed_stack");
+    localStorage.removeItem("AWS_AI_Resources_Provisioner_template");
+    localStorage.removeItem("AWS_AI_Resources_Provisioner_stage");
+    localStorage.removeItem("AWS_AI_Resources_Provisioner_deployed_stack");
     setTemplate(null);
     setStage("idle");
     setChangesetState(null);
@@ -138,28 +169,37 @@ export default function App() {
   };
 
   const deployErrorMsg = deployError
-    ? ((deployError as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail ?? (deployError as Error).message)
+    ? ((deployError as { response?: { data?: { detail?: string } } })?.response
+        ?.data?.detail ?? (deployError as Error).message)
     : null;
 
   return (
     <div className="app-root">
       {/* Header */}
       <header className="app-header">
-        <div className="header-inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+        <div
+          className="header-inner"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            width: "100%",
+          }}
+        >
           <div>
             <div className="logo">
-              <span className="logo-text">Stackmind</span>
+              <span className="logo-text">AWS AI PROVISIONEER</span>
             </div>
-            <p className="header-tagline" style={{ margin: 0 }}>
-              Natural language → CloudFormation → Local AWS sandbox
-            </p>
+      
           </div>
           {template && (
-            <button 
-              className="btn btn-ghost btn-sm" 
+            <button
+              className="btn btn-ghost btn-sm"
               onClick={handleReset}
-              style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+              style={{
+                borderColor: "var(--border)",
+                color: "var(--text-secondary)",
+              }}
             >
               Start Fresh
             </button>
@@ -179,7 +219,9 @@ export default function App() {
         </section>
 
         {/* Step 2 — YAML Preview + Architecture Diagram */}
-        {(stage === "generated" || stage === "changeset" || stage === "deployed") &&
+        {(stage === "generated" ||
+          stage === "changeset" ||
+          stage === "deployed") &&
           template && (
             <section className="step-section">
               <div className="step-number">2</div>
@@ -190,13 +232,18 @@ export default function App() {
                     yaml={template}
                     onChange={(newYaml) => {
                       setTemplate(newYaml);
-                      localStorage.setItem("stackmind_template", newYaml);
+                      localStorage.setItem(
+                        "AWS_AI_Resources_Provisioner_template",
+                        newYaml,
+                      );
                     }}
                     onPreviewChanges={handlePreviewChanges}
                   />
                   <DiagramPanel
                     template={template}
-                    onNodeClick={stage === "deployed" ? handleNodeClick : undefined}
+                    onNodeClick={
+                      stage === "deployed" ? handleNodeClick : undefined
+                    }
                   />
                 </div>
               </div>
@@ -226,7 +273,7 @@ export default function App() {
             <div className="step-number">4</div>
             <div className="step-content">
               <h2 className="step-title">Deployment status</h2>
-              <StackStatus stackName={deployedStack} />
+              <StackStatus stackName={deployedStack} onDeleteComplete={handleReset} />
             </div>
           </section>
         )}
@@ -234,12 +281,15 @@ export default function App() {
 
       <footer className="app-footer">
         <p>
-          Stackmind Phase 3B · MiniStack endpoint:{" "}
+          AWS_AI_Resources_Provisioner Phase 3B · MiniStack endpoint:{" "}
           <code>http://localhost:4566</code>
           {deployedStack && (
             <span style={{ marginLeft: "0.75rem" }}>
               · Stack: <code>{deployedStack}</code>
-              {" — "}<span style={{ color: "var(--accent)" }}>click any interactive node to inspect</span>
+              {" — "}
+              <span style={{ color: "var(--accent)" }}>
+                click any interactive node to inspect
+              </span>
             </span>
           )}
         </p>
@@ -256,4 +306,3 @@ export default function App() {
     </div>
   );
 }
-

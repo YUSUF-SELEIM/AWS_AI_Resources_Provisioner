@@ -6,6 +6,7 @@ services:
     environment:
       - DEFAULT_REGION=us-east-1
       - DEBUG=1
+      - LAMBDA_DOCKER_NETWORK=stackmind_default 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:

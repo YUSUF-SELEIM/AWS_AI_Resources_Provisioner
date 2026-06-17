@@ -47,6 +47,11 @@ export async function getStackResources(stackName: string): Promise<StackResourc
   return data;
 }
 
+export async function deleteStack(stackName: string): Promise<{ ok: boolean }> {
+  const { data } = await api.delete<{ ok: boolean }>(`/stacks/${stackName}`);
+  return data;
+}
+
 // --- Phase 3A ---
 
 export async function previewChangeset(

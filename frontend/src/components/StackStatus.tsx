@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useStackStatus } from "../hooks/useStackStatus";
 import { StackResources } from "./StackResources";
+import { deleteStack } from "../lib/api";
 
 interface Props {
   stackName: string;
+  onDeleteComplete: () => void;
 }
 
 const STATUS_CONFIG: Record<
@@ -16,8 +19,10 @@ const STATUS_CONFIG: Record<
   ROLLBACK_COMPLETE:  { label: "Rolled back",    className: "badge badge-red" },
 };
 
-export function StackStatus({ stackName }: Props) {
+export function StackStatus({ stackName, onDeleteComplete }: Props) {
   const { data, isLoading, error } = useStackStatus(stackName);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -48,15 +53,47 @@ export function StackStatus({ stackName }: Props) {
     data.status === "ROLLBACK_COMPLETE" ||
     data.status === "ROLLBACK_IN_PROGRESS";
 
+  const handleDelete = async () => {
+    if (!window.confirm("Are you sure you want to delete this stack and tear down all its resources?")) {
+      return;
+    }
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteStack(stackName);
+      onDeleteComplete();
+    } catch (e: any) {
+      setDeleteError(e.response?.data?.detail ?? e.message ?? "Delete failed");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <>
       <div className="status-card">
-        <div className="status-header">
-          <h3 className="status-title">Stack Status</h3>
-          <span className={cfg.className}>
-            {cfg.label}
-          </span>
+        <div className="status-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <h3 className="status-title">Stack Status</h3>
+            <span className={cfg.className}>
+              {cfg.label}
+            </span>
+          </div>
+          <button
+            className="btn btn-secondary"
+            style={{ color: "var(--error)", borderColor: "var(--error)" }}
+            onClick={handleDelete}
+            disabled={isDeleting}
+          >
+            {isDeleting ? "Deleting..." : "Delete Stack"}
+          </button>
         </div>
+
+        {deleteError && (
+          <div className="alert alert-error mt-2">
+            <strong>Delete failed:</strong> {deleteError}
+          </div>
+        )}
 
         <div className="status-detail">
           <span className="status-label">Stack Name</span>

@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
-/* ─── Design Tokens ─────────────────────────────────────── */
+/* ─── Design Tokens (Minimalist Black & White) ───────────── */
 :root {
-  --bg: #f8f9fa;
+  --bg: #ffffff;
   --bg-card: #ffffff;
-  --bg-card-hover: #f1f3f5;
-  --border: #e2e8f0;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --success: #22c55e;
-  --error: #ef4444;
-  --warning: #f59e0b;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --bg-card-hover: #fcfcfc;
+  --border: #000000;
+  --accent: #000000;
+  --accent-hover: #222222;
+  --success: #000000;
+  --error: #000000;
+  --warning: #000000;
+  --text-primary: #000000;
+  --text-secondary: #000000;
+  --text-muted: #555555;
   --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
-  --radius: 10px;
-  --radius-lg: 16px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.08);
+  --radius: 0px;
+  --radius-lg: 0px;
+  --shadow: none;
 }
 
 /* ─── Reset & Base ───────────────────────────────────────── */
@@ -39,13 +39,12 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
 .app-root { display: flex; flex-direction: column; min-height: 100vh; }
 
 .app-header {
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-  border-bottom: 1px solid var(--border);
+  background: #ffffff;
+  border-bottom: 2px solid var(--border);
   padding: 1.5rem 2rem;
   position: sticky;
   top: 0;
   z-index: 10;
-  backdrop-filter: blur(12px);
 }
 
 .header-inner {
@@ -62,12 +61,9 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
 
 .logo-text {
   font-size: 1.5rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, #2563eb, #60a5fa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.03em;
+  font-weight: 900;
+  color: #000000;
+  letter-spacing: -0.05em;
 }
 
 .header-tagline {
@@ -114,21 +110,21 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
   width: 2rem;
   height: 2rem;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), #60a5fa);
+  background: #000000;
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   font-size: 0.85rem;
   margin-top: 0.25rem;
-  box-shadow: 0 0 0 4px rgba(37,99,235,0.15);
 }
 
 .step-content { flex: 1; display: flex; flex-direction: column; gap: 0.75rem; }
 
 .step-title {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -435,10 +431,10 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
 
 .resource-type-badge {
   font-size: 0.75rem;
-  color: #2563eb;
-  background: rgba(37,99,235,0.08);
-  border: 1px solid rgba(37,99,235,0.2);
-  border-radius: 6px;
+  color: #000000;
+  background: #ffffff;
+  border: 1px solid #000000;
+  border-radius: var(--radius);
   padding: 0.15rem 0.45rem;
   white-space: nowrap;
 }
@@ -467,14 +463,14 @@ code { font-family: var(--font-mono); font-size: 0.875em; }
   flex-direction: column;
   gap: 0.15rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(239,68,68,0.06);
-  border-radius: 6px;
-  border-left: 2px solid rgba(239,68,68,0.4);
+  background: #ffffff;
+  border-radius: var(--radius);
+  border-left: 2px solid #000000;
 }
 
 .fe-resource { font-weight: 600; font-size: 0.85rem; }
-.fe-type { font-weight: 400; color: #dc2626; opacity: 0.7; font-size: 0.78rem; }
-.fe-reason { font-size: 0.8rem; color: #dc2626; opacity: 0.85; }
+.fe-type { font-weight: 400; color: #000000; opacity: 0.7; font-size: 0.78rem; }
+.fe-reason { font-size: 0.8rem; color: #000000; opacity: 0.85; }
 
 /* ─── Responsive ─────────────────────────────────────────── */
 @media (max-width: 640px) {

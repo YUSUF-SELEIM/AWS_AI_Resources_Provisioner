@@ -1,4 +1,4 @@
-// Shared API response types for Stackmind
+// Shared API response types for AWS_AI_Resources_Provisioner
 
 export interface TemplateResponse {
   template: string;
@@ -79,7 +79,10 @@ export interface DiagramResponse {
 
 // --- Phase 3B: Resource interaction types ---
 
-export type DynamoItem = Record<string, string | number | boolean | null | unknown>;
+export type DynamoItem = Record<
+  string,
+  string | number | boolean | null | unknown
+>;
 
 export interface DynamoScanResponse {
   items: DynamoItem[];
@@ -153,6 +156,3 @@ export interface RdsQueryResponse {
   records: Record<string, string | number | boolean | null | unknown>[];
   numberOfRecordsUpdated: number;
 }
-
-
-
