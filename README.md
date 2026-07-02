@@ -138,12 +138,4 @@ npm run dev
 
 ---
 
-## Phase Roadmap
-
-| Phase | Status | Description |
-|---|---|---|
-| 1 | ✅ Completed | S3 bucket generation & deployment |
-| 2 | ✅ Completed | DynamoDB tables, SQS queues |
-| 3 | ✅ Completed | Lambda functions, IAM roles, and EC2 instances |
-| 4 | Planned | Change set previews before deploy |
-| 5 | Planned | Architecture diagram view |
+![alt text](image.png)
