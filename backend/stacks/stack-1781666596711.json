@@ -1,0 +1,19 @@
+{
+  "StackName": "stack-1781666596711",
+  "StackStatus": "CREATE_COMPLETE",
+  "CreationTime": "2026-06-17T01:52:32Z",
+  "Template": "",
+  "PythonScript": "# DIAGRAM_METADATA:\n# {\n#   \"resources\": {\n#     \"WebServerSG\": \"AWS::EC2::SecurityGroup\",\n#     \"MyInstance\": \"AWS::EC2::Instance\"\n#   },\n#   \"references\": [\n#     {\"source\": \"MyInstance\", \"target\": \"WebServerSG\", \"label\": \"security-group\"}\n#   ]\n# }\n\nimport json\nimport boto3\n\nec2 = boto3.client('ec2', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')\n\nsg_name = 'web-server-security-group'\ntry:\n    sg_resp = ec2.create_security_group(\n        GroupName=sg_name,\n        Description='Enable HTTP traffic'\n    )\n    sg_id = sg_resp['GroupId']\nexcept Exception:\n    sgs = ec2.describe_security_groups(GroupNames=[sg_name])\n    sg_id = sgs['SecurityGroups'][0]['GroupId']\n\ntry:\n    ec2.authorize_security_group_ingress(\n        GroupId=sg_id,\n        IpPermissions=[\n            {\n                'IpProtocol': 'tcp',\n                'FromPort': 80,\n                'ToPort': 80,\n                'IpRanges': [{'CidrIp': '0.0.0.0/0'}]\n            }\n        ]\n    )\nexcept Exception:\n    pass\n\ninstance_resp = ec2.run_instances(\n    ImageId='ami-df5de7b6',  # Mock local AMI\n    MinCount=1,\n    MaxCount=1,\n    InstanceType='t2.micro',\n    SecurityGroupIds=[sg_id],\n    UserData=\"echo 'Server sdfsdfsdfsdfstarted'\"\n)\ninstance_id = instance_resp['Instances'][0]['InstanceId']\n\nstate = {\n    \"resources\": [\n        {\"LogicalResourceId\": \"WebServerSG\", \"PhysicalResourceId\": sg_id, \"ResourceType\": \"AWS::EC2::SecurityGroup\"},\n        {\"LogicalResourceId\": \"MyInstance\", \"PhysicalResourceId\": instance_id, \"ResourceType\": \"AWS::EC2::Instance\"}\n    ]\n}\nprint(json.dumps(state))\n",
+  "Resources": [
+    {
+      "LogicalResourceId": "WebServerSG",
+      "PhysicalResourceId": "sg-ab52ad3f345673ce3",
+      "ResourceType": "AWS::EC2::SecurityGroup"
+    },
+    {
+      "LogicalResourceId": "MyInstance",
+      "PhysicalResourceId": "i-efba5dd236f5acb2f",
+      "ResourceType": "AWS::EC2::Instance"
+    }
+  ]
+}

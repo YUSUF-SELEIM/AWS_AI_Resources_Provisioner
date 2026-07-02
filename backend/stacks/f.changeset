@@ -1,0 +1,61 @@
+# DIAGRAM_METADATA:
+# {
+#   "resources": {
+#     "WebServerSG": "AWS::EC2::SecurityGroup",
+#     "MyInstance": "AWS::EC2::Instance"
+#   },
+#   "references": [
+#     {"source": "MyInstance", "target": "WebServerSG", "label": "security-group"}
+#   ]
+# }
+
+import json
+import boto3
+
+ec2 = boto3.client('ec2', endpoint_url='http://ministack:4566', region_name='us-east-1', aws_access_key_id='test', aws_secret_access_key='test')
+
+sg_name = 'web-server-security-group'
+try:
+    sg_resp = ec2.create_security_group(
+        GroupName=sg_name,
+        Description='Enable HTTP traffic'
+    )
+    sg_id = sg_resp['GroupId']
+except Exception:
+    sgs = ec2.describe_security_groups(GroupNames=[sg_name])
+    sg_id = sgs['SecurityGroups'][0]['GroupId']
+
+try:
+    ec2.authorize_security_group_ingress(
+        GroupId=sg_id,
+        IpPermissions=[
+            {
+                'IpProtocol': 'tcp',
+                'FromPort': 80,
+                'ToPort': 80,
+                'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+            }
+        ]
+    )
+except Exception:
+    pass
+
+instance_resp = ec2.run_instances(
+    ImageId='ami-df5de7b6',  # Mock local AMI
+    MinCount=1,
+    MaxCount=1,
+    InstanceType='t2.micro',
+    SecurityGroupIds=[sg_id],
+UserData="""
+    <h1>My Custom Web Server Page</h1>
+    <p>This is customized via UserData!</p>
+    """)
+instance_id = instance_resp['Instances'][0]['InstanceId']
+
+state = {
+    "resources": [
+        {"LogicalResourceId": "WebServerSG", "PhysicalResourceId": sg_id, "ResourceType": "AWS::EC2::SecurityGroup"},
+        {"LogicalResourceId": "MyInstance", "PhysicalResourceId": instance_id, "ResourceType": "AWS::EC2::Instance"}
+    ]
+}
+print(json.dumps(state))

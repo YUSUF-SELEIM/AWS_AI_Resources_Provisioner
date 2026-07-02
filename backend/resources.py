@@ -11,6 +11,7 @@ import json
 import os
 import socket
 import tarfile
+import re
 from typing import Any
 
 import boto3
@@ -426,6 +427,15 @@ def _manage_local_container(logical_id: str, action: str, stack_name: str = None
     except docker.errors.NotFound:
         container = None
 
+    # Resolve physical instance ID to extract UserData and track container identity
+    instance_id = None
+    if stack_name:
+        try:
+            res = _resolve(stack_name, logical_id)
+            instance_id = res.get("PhysicalResourceId")
+        except Exception:
+            pass
+
     if action == "stop":
         if container:
             try:
@@ -434,9 +444,11 @@ def _manage_local_container(logical_id: str, action: str, stack_name: str = None
             except Exception as e:
                 print(f"[Docker Sync] Stop failed: {e}")
     elif action == "start":
-        # If container exists and is already running, do not recreate it
+        # Check if container is running the exact same instance_id
         if container and container.status == "running":
-            return
+            running_inst_id = container.attrs.get("Config", {}).get("Labels", {}).get("instance_id")
+            if running_inst_id == instance_id:
+                return
 
         # Always remove existing container to clear stale configuration or broken mounts
         if container:
@@ -446,159 +458,115 @@ def _manage_local_container(logical_id: str, action: str, stack_name: str = None
             except Exception as e:
                 print(f"[Docker Sync] Removal failed: {e}")
                 
-        # Check for S3 content to dynamically display in Nginx
-        s3_content = ""
+        # Resolve physical instance ID to extract UserData
+        instance_id = None
         if stack_name:
             try:
-                cfn = _client("cloudformation")
-                tpl_resp = cfn.get_template(StackName=stack_name)
-                template_body = tpl_resp.get("TemplateBody", "")
-                parsed = yaml.load(template_body, Loader=CfnSafeLoader)
-                
-                s3_client = _client("s3")
-                resources = parsed.get("Resources", {})
-                for r_id, r_val in resources.items():
-                    r_type = r_val.get("Type")
-                    if r_type in ("AWS::S3::BucketObject", "AWS::S3::Object", "Custom::MiniStackS3Object"):
-                        props = r_val.get("Properties", {})
-                        bucket_ref = props.get("Bucket")
+                res = _resolve(stack_name, logical_id)
+                instance_id = res.get("PhysicalResourceId")
+            except Exception:
+                pass
+
+        custom_page = None
+        decoded = ""
+        if stack_name:
+            try:
+                from state_manager import load_stack_state
+                state = load_stack_state(stack_name)
+                script_content = state.get("PythonScript", "")
+                if script_content:
+                    triple_double = re.search(r'UserData\s*=\s*"""(.*?)"""', script_content, re.DOTALL)
+                    if triple_double:
+                        decoded = triple_double.group(1)
+                    else:
+                        triple_single = re.search(r"UserData\s*=\s*'''(.*?)'''", script_content, re.DOTALL)
+                        if triple_single:
+                            decoded = triple_single.group(1)
+                        else:
+                            double_quote = re.search(r'UserData\s*=\s*"([^"]*)"', script_content)
+                            if double_quote:
+                                decoded = double_quote.group(1)
+                            else:
+                                single_quote = re.search(r"UserData\s*=\s*'([^']*)'", script_content)
+                                if single_quote:
+                                    decoded = single_quote.group(1)
+            except Exception as e:
+                print(f"[Docker Sync] Failed to read script or extract UserData: {e}")
+
+        if decoded:
+            decoded = decoded.strip()
+            print(f"[Docker Sync] Decoded UserData from Script: {repr(decoded)}")
+            try:
+                # Try to extract HTML content
+                if "<html>" in decoded.lower() or "<!doctype html>" in decoded.lower():
+                    html_start = decoded.lower().find("<html")
+                    if html_start == -1:
+                        html_start = decoded.lower().find("<!doctype")
+                    custom_page = decoded[html_start:]
+                elif "cat <<'eof'" in decoded.lower():
+                    parts = re.split(r"(?i)cat\s+<<\s*['\"]?eof['\"]?", decoded)
+                    if len(parts) > 1:
+                        sub_parts = parts[1].split("EOF")
+                        custom_page = sub_parts[0].strip()
+                elif "cat <<eof" in decoded.lower():
+                    parts = re.split(r"(?i)cat\s+<<\s*eof", decoded)
+                    if len(parts) > 1:
+                        sub_parts = parts[1].split("EOF")
+                        custom_page = sub_parts[0].strip()
+                elif "echo" in decoded:
+                    matches = re.findall(r"echo\s+['\"](.*?)['\"]\s*>>?\s*\S*index\.html", decoded)
+                    if matches:
+                        custom_page = "\n".join(matches)
                         
-                        # Resolve bucket name
-                        bucket_name = None
-                        if isinstance(bucket_ref, dict) and "Ref" in bucket_ref:
-                            bucket_logical = bucket_ref["Ref"]
-                            try:
-                                bucket_name = _resolve(stack_name, bucket_logical)["PhysicalResourceId"]
-                            except Exception:
-                                pass
-                        elif isinstance(bucket_ref, str):
-                            bucket_name = bucket_ref
-                            
-                        key = props.get("Key")
-                        if bucket_name and key:
-                            try:
-                                s3_resp = s3_client.get_object(Bucket=bucket_name, Key=key)
-                                val_str = s3_resp["Body"].read().decode("utf-8", errors="replace")
-                                s3_content += f"<div style='margin-bottom:1rem;padding:1rem;background:#161920;border-radius:4px;border:1px solid #2d3139;'><div style='color:#a6e3a1;font-weight:bold;margin-bottom:0.5rem;'>📄 Object: {key} (Bucket: {bucket_name})</div><pre style='margin:0;color:#f4f4f5;'>{val_str}</pre></div>"
-                            except Exception as s3_err:
-                                print(f"[Docker Sync] Failed to get object {bucket_name}/{key}: {s3_err}")
-            except Exception as tpl_err:
-                print(f"[Docker Sync] Failed parsing template for S3 objects: {tpl_err}")
-
-        # Check for DynamoDB content to dynamically display in Nginx
-        dynamo_content = ""
-        if stack_name:
-            try:
-                cfn = _client("cloudformation")
-                tpl_resp = cfn.get_template(StackName=stack_name)
-                template_body = tpl_resp.get("TemplateBody", "")
-                parsed = yaml.load(template_body, Loader=CfnSafeLoader)
-                resources = parsed.get("Resources", {})
-                
-                ddb_client = _client("dynamodb")
-                for r_id, r_val in resources.items():
-                    if r_val.get("Type") == "AWS::DynamoDB::Table":
-                        try:
-                            tbl_phys = _resolve(stack_name, r_id)["PhysicalResourceId"]
-                            scan_resp = ddb_client.scan(TableName=tbl_phys, Limit=5)
-                            items = scan_resp.get("Items", [])
-                            items_html = ""
-                            if items:
-                                for item in items:
-                                    deser = {k: _deserialize(v) for k, v in item.items()}
-                                    items_html += f"<li style='margin-bottom:0.5rem;'><code style='color:#f9e2af;'>{json.dumps(deser)}</code></li>"
-                            else:
-                                items_html = "<li style='color:#7d8590;'>No items in table.</li>"
-                            dynamo_content += f"<div style='margin-bottom:1rem;padding:1rem;background:#161920;border-radius:4px;border:1px solid #2d3139;'><div style='color:#f9e2af;font-weight:bold;margin-bottom:0.5rem;'>📊 Table: {tbl_phys}</div><ul style='margin:0;padding-left:1.25rem;'>{items_html}</ul></div>"
-                        except Exception as ddb_err:
-                            print(f"[Docker Sync] DDB Scan failed for {r_id}: {ddb_err}")
-            except Exception as e:
-                print(f"[Docker Sync] Failed parsing template for DDB: {e}")
-
-        # Check for RDS content to dynamically display in Nginx
-        rds_content = ""
-        if stack_name:
-            try:
-                cfn = _client("cloudformation")
-                tpl_resp = cfn.get_template(StackName=stack_name)
-                template_body = tpl_resp.get("TemplateBody", "")
-                parsed = yaml.load(template_body, Loader=CfnSafeLoader)
-                resources = parsed.get("Resources", {})
-                
-                rds_client = _client("rds")
-                rds_data = _client("rds-data")
-                for r_id, r_val in resources.items():
-                    if r_val.get("Type") == "AWS::RDS::DBInstance":
-                        try:
-                            db_phys = _resolve(stack_name, r_id)["PhysicalResourceId"]
-                            desc_resp = rds_client.describe_db_instances(DBInstanceIdentifier=db_phys)
-                            db_name = desc_resp["DBInstances"][0].get("DBName", "mydb")
-                            db_arn = f"arn:aws:rds:us-east-1:000000000000:db:{db_phys}"
-                            secret_name = f"AWS_AI_Resources_Provisioner-rds-secret-{db_phys.lower()}"
-                            
-                            show_resp = rds_data.execute_statement(
-                                resourceArn=db_arn,
-                                secretArn=secret_name,
-                                sql="SHOW TABLES;",
-                                database=db_name
-                            )
-                            tables = [row[0].get("stringValue") for row in show_resp.get("records", []) if row and isinstance(row[0], dict)]
-                            tables_html = ""
-                            if tables:
-                                for table in tables:
-                                    sel_resp = rds_data.execute_statement(
-                                        resourceArn=db_arn,
-                                        secretArn=secret_name,
-                                        sql=f"SELECT * FROM {table} LIMIT 5;",
-                                        database=db_name,
-                                        includeResultMetadata=True
-                                    )
-                                    col_names = [col.get("name") for col in sel_resp.get("columnMetadata", [])]
-                                    rows_html = ""
-                                    for row in sel_resp.get("records", []):
-                                        row_vals = []
-                                        for col in row:
-                                            row_vals.append(list(col.values())[0])
-                                        row_dict = dict(zip(col_names, row_vals))
-                                        rows_html += f"<li style='margin-bottom:0.25rem;'><code style='color:#89b4fa;'>{json.dumps(row_dict)}</code></li>"
-                                    tables_html += f"<div style='margin-top:0.75rem;'><span style='color:#89b4fa;font-weight:bold;'>Table: {table}</span><ul style='margin:0.25rem 0;padding-left:1.25rem;'>{rows_html or '<li style=\"color:#7d8590;\">No records</li>'}</ul></div>"
-                            else:
-                                tables_html = "<div style='color:#7d8590;font-style:italic;'>No tables found.</div>"
-                            rds_content += f"<div style='margin-bottom:1rem;padding:1rem;background:#161920;border-radius:4px;border:1px solid #2d3139;'><div style='color:#89dceb;font-weight:bold;margin-bottom:0.5rem;'>🗄️ Database: {db_phys} ({db_name})</div>{tables_html}</div>"
-                        except Exception as rds_err:
-                            print(f"[Docker Sync] RDS Query failed for {r_id}: {rds_err}")
-            except Exception as e:
-                print(f"[Docker Sync] Failed parsing template for RDS: {e}")
-
-        # Build index.html
-        html_body = f"""<!DOCTYPE html>
+                # Wrap custom plaintext UserData in a clean black & white format
+                if not custom_page and decoded.strip():
+                    custom_page = f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>Mock EC2 Web Server</title>
+    <title>EC2 Web Server</title>
     <style>
-        body {{ font-family: system-ui, -apple-system, sans-serif; background: #080a0f; color: #f4f4f5; padding: 2rem; margin: 0; }}
-        .card {{ max-width: 600px; margin: auto; background: #0d1117; padding: 2rem; border-radius: 8px; border: 1px solid #2d3139; }}
-        h1 {{ color: #00e5ff; margin-top: 0; }}
-        h3 {{ color: #89b4fa; margin-top: 1.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid #2d3139; padding-bottom: 0.25rem; }}
-        pre {{ background: #161920; padding: 0.75rem; border-radius: 4px; overflow-x: auto; font-family: monospace; }}
+        body {{ font-family: monospace; background: #ffffff; color: #000000; padding: 2rem; margin: 0; }}
+        .card {{ border: 2px solid #000000; padding: 2rem; }}
+        h1 {{ margin-top: 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #000000; padding-bottom: 0.5rem; }}
+        pre {{ background: #f5f5f5; padding: 0.75rem; border: 1px solid #000000; overflow-x: auto; white-space: pre-wrap; }}
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>Hey! Local EC2 Web Server is running.</h1>
-        <p>Resource ID: <strong>{logical_id}</strong></p>
-        
-        <h3>📦 S3 Buckets</h3>
-        {s3_content or "<p style='color:#7d8590;font-style:italic;font-size:13px;'>No S3 objects found in the stack.</p>"}
-        
-        <h3>📊 DynamoDB Tables</h3>
-        {dynamo_content or "<p style='color:#7d8590;font-style:italic;font-size:13px;'>No DynamoDB tables found in the stack.</p>"}
-        
-        <h3>🗄️ RDS Databases</h3>
-        {rds_content or "<p style='color:#7d8590;font-style:italic;font-size:13px;'>No RDS MySQL instances found in the stack.</p>"}
+        <h1>EC2 Instance: {logical_id}</h1>
+        <p>Status: Running</p>
+        <h3>UserData Output</h3>
+        <pre>{decoded}</pre>
     </div>
 </body>
 </html>"""
+                    print(f"[Docker Sync] custom_page resolved to: {repr(custom_page)}")
+            except Exception as parse_err:
+                print(f"[Docker Sync] Failed to parse UserData: {parse_err}")
+
+        # Build index.html
+        if not custom_page:
+            html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>EC2 Web Server</title>
+    <style>
+        body {{ font-family: monospace; background: #ffffff; color: #000000; padding: 2rem; margin: 0; }}
+        .card {{ border: 2px solid #000000; padding: 2rem; }}
+        h1 {{ margin-top: 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #000000; padding-bottom: 0.5rem; }}
+        h3 {{ font-size: 1rem; margin-top: 1.5rem; text-transform: uppercase; border-bottom: 1px solid #000000; padding-bottom: 0.25rem; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Local EC2 Web Server: {logical_id}</h1>
+        <p>Status: Active</p>
+        <p>To customize this page, specify HTML or scripts in your EC2 instance's <code>UserData</code>.</p>
+    </div>
+</body>
+</html>"""
+        else:
+            html_body = custom_page
 
         # Create a fresh container matching the logical name
         try:
@@ -609,6 +577,7 @@ def _manage_local_container(logical_id: str, action: str, stack_name: str = None
                 "detach": True,
                 "hostname": logical_id,
                 "ports": {"80/tcp": None},
+                "labels": {"instance_id": instance_id or ""},
             }
             if network_name:
                 run_kwargs["network"] = network_name

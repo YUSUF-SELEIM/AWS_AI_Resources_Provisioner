@@ -1,10 +1,10 @@
 # AWS_AI_Resources_Provisioner
 
-> Natural language → CloudFormation templates → Local AWS sandbox (MiniStack)
+> Natural language → Python (boto3) scripts → Local AWS sandbox (MiniStack)
 
-AWS_AI_Resources_Provisioner is an open-source tool that converts plain-English infrastructure descriptions into AWS CloudFormation templates using AI, then deploys them to a local AWS emulator for safe, cost-free testing.
+AWS_AI_Resources_Provisioner is an open-source tool that converts plain-English infrastructure descriptions into executable Python (boto3) provisioning scripts using AI, then runs them against a local AWS emulator (MiniStack / LocalStack) for safe, cost-free testing.
 
-**Phase 1** supports S3 buckets. Later phases will add DynamoDB, SQS, Lambda, IAM, change set previews, and an architecture diagram view.
+It now supports S3 buckets, SQS queues, Lambda functions, IAM roles, and local EC2 instances running as custom Docker web servers.
 
 ---
 
@@ -17,12 +17,12 @@ Browser (localhost:5173)
        ▼ HTTP
 FastAPI backend (localhost:8000)
   ├─ /generate  → Groq API (llama-3.3-70b-versatile)
-  ├─ /deploy    → MiniStack CloudFormation
-  └─ /stacks/{name} → MiniStack CloudFormation
+  ├─ /deploy    → Runs boto3 script locally
+  └─ /stacks/{name} → Resource state manager
        │
        ▼
 MiniStack / LocalStack (localhost:4566)
-  └─ CloudFormation + S3 emulation
+  └─ Local S3, Lambda, SQS, EC2 emulation
 ```
 
 ---
@@ -63,11 +63,11 @@ open http://localhost:5173
    - `Create an S3 bucket called my-photos`
    - `Make a private S3 bucket named dev-uploads`
 
-2. **Review the generated YAML** — The AI outputs raw CloudFormation. Inspect it before deploying.
+2. **Review the generated Script** — The AI outputs Python code using `boto3`. Inspect it before deploying.
 
-3. **Deploy** — Click "Deploy to MiniStack". The UI polls status every 2 seconds.
+3. **Deploy** — Click "Deploy to MiniStack". The backend executes the script and logs progress.
 
-4. **Verify** — Once `CREATE_COMPLETE`, confirm your bucket exists:
+4. **Verify** — Confirm your bucket exists:
    ```bash
    aws --endpoint-url http://localhost:4566 s3 ls
    ```
@@ -133,7 +133,7 @@ npm run dev
 | Variable | Where | Description |
 |---|---|---|
 | `GROQ_API_KEY` | `.env` (root) | Your Groq API key |
-| `MINISTACK_ENDPOINT` | set by docker-compose | CloudFormation endpoint (default: `http://localhost:4566`) |
+| `MINISTACK_ENDPOINT` | set by docker-compose | MiniStack/LocalStack endpoint (default: `http://localhost:4566`) |
 | `VITE_API_URL` | `frontend/.env` | Backend URL seen by browser (default: `http://localhost:8000`) |
 
 ---
@@ -142,8 +142,8 @@ npm run dev
 
 | Phase | Status | Description |
 |---|---|---|
-| 1 | ✅ Current | S3 bucket generation & deployment |
-| 2 | Planned | DynamoDB tables, SQS queues |
-| 3 | Planned | Lambda functions, IAM roles |
+| 1 | ✅ Completed | S3 bucket generation & deployment |
+| 2 | ✅ Completed | DynamoDB tables, SQS queues |
+| 3 | ✅ Completed | Lambda functions, IAM roles, and EC2 instances |
 | 4 | Planned | Change set previews before deploy |
 | 5 | Planned | Architecture diagram view |

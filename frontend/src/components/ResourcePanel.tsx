@@ -798,120 +798,44 @@ function Ec2Panel({
                 </div>
               </div>
 
-              <div className="panel-section">
-                <h3 className="panel-section-title">Networking</h3>
-                <div className="info-grid" style={{ marginBottom: "1rem" }}>
-                  <div className="info-item">
-                    <span className="info-label">Public IP</span>
-                    <span className="info-value">
-                      {info.public_ip || "None"}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">Private IP</span>
-                    <span className="info-value">
-                      {info.private_ip || "None"}
-                    </span>
-                  </div>
-                </div>
-
-                {info.public_ip && isRunning ? (
-                  <>
-                    <h3 className="panel-section-title">SSH Access</h3>
-                    <p
-                      style={{
-                        fontSize: 13,
-                        color: "var(--text-secondary)",
-                        marginBottom: "0.5rem",
-                      }}
-                    >
-                      Run this command in your terminal to connect:
-                    </p>
-                    <div
-                      className="code-block"
-                      style={{
-                        padding: "0.5rem",
-                        background: "var(--bg-card)",
-                        borderRadius: 4,
-                        fontFamily: "monospace",
-                        fontSize: 13,
-                      }}
-                    >
-                      ssh -i my-ec2-key.pem ec2-user@{info.public_ip}
-                    </div>
-                  </>
-                ) : isRunning ? (
-                  <div style={{ marginTop: "1rem" }}>
-                    <h3 className="panel-section-title">Local Dev Container</h3>
-                    <p
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text-secondary)",
-                        marginBottom: "0.75rem",
-                      }}
-                    >
-                      An ephemeral container has been automatically spun up in
-                      the MiniStack network.
-                    </p>
-
-                    {info.host_port ? (
-                      <div style={{ marginBottom: "1rem" }}>
-                        <span
-                          className="info-label"
-                          style={{ display: "block", marginBottom: "0.25rem" }}
-                        >
-                          Access Web Server (Host Browser)
-                        </span>
-                        <a
-                          href={`http://localhost:${info.host_port}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="resource-id"
-                          style={{
-                            color: "var(--accent)",
-                            textDecoration: "underline",
-                            fontSize: 13,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          http://localhost:{info.host_port}
-                        </a>
-                      </div>
-                    ) : (
-                      <p
-                        style={{
-                          fontSize: 11,
-                          color: "var(--text-muted)",
-                          marginBottom: "1rem",
-                        }}
-                      >
-                        Port mapping not available (container starting up...).
-                      </p>
-                    )}
-
-                    <div>
+              {isRunning && (
+                <div className="panel-section">
+                  {info.host_port ? (
+                    <div style={{ marginBottom: "1rem" }}>
                       <span
                         className="info-label"
                         style={{ display: "block", marginBottom: "0.25rem" }}
                       >
-                        VPC Internal Address (Lambda / SQS / VPC)
+                        Access Web Server
                       </span>
-                      <div
-                        className="code-block"
+                      <a
+                        href={`http://localhost:${info.host_port}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="resource-id"
                         style={{
-                          padding: "0.5rem",
-                          background: "var(--bg-card)",
-                          borderRadius: 4,
-                          fontFamily: "monospace",
-                          fontSize: 12,
+                          color: "var(--accent)",
+                          textDecoration: "underline",
+                          fontSize: 13,
+                          fontWeight: "bold",
                         }}
                       >
-                        http://{logicalId}
-                      </div>
+                        http://localhost:{info.host_port}
+                      </a>
                     </div>
-                  </div>
-                ) : null}
-              </div>
+                  ) : (
+                    <p
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-muted)",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      Port mapping not available (container starting up...).
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
